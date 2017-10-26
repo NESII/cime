@@ -88,7 +88,7 @@ module cesm_init_mod
 #include <mpif.h>
 
   !----------------------------------------------------------------------------
-  ! "infodata" gathers various control flags into one datatype
+  ! orbital parameters
   !----------------------------------------------------------------------------
   character(len=*), public, parameter :: orb_fixed_year       = 'fixed_year'
   character(len=*), public, parameter :: orb_variable_year    = 'variable_year'
@@ -521,7 +521,6 @@ contains
     if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) call shr_sys_abort()
 
     ! set initial value to .false.
-    ! Note currently this is a duplicate setting of what is done in infodata
     call NUOPC_CompAttributeSet(driver, name='atm_aero', value='.false.', rc=rc)
     if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) call shr_sys_abort()
 
@@ -560,6 +559,9 @@ contains
     samegrid_alo = '.true.'
 
     ! set samegrid to true for single column
+    call NUOPC_CompAttributeGet(driver, name="single_column", value=cvalue, rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) call shr_sys_abort()
+    read(cvalue,*) single_column
     if (.not. single_column) then
        if (trim(atm_gnam) /= trim(ocn_gnam)) samegrid_ao = '.false.'
        if (trim(atm_gnam) /= trim(lnd_gnam)) samegrid_al = '.false.'
@@ -623,11 +625,8 @@ contains
     call driver_attributes_check(driver)
 
     !----------------------------------------------------------
-    ! Initialize coupled fields (depends on infodata)
+    ! Initialize coupled fields
     !----------------------------------------------------------
-
-    call NUOPC_CompAttributeGet(driver, name="cime_model", value=cime_model, rc=rc)
-    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) call shr_sys_abort()
 
     call NUOPC_CompAttributeGet(driver, name="cime_model", value=cime_model, rc=rc)
     if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) call shr_sys_abort()
