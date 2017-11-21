@@ -69,12 +69,9 @@ module seq_flux_mct
 
   real(r8), allocatable :: fswpen (:) ! fraction of sw penetrating ocn surface layer
   real(r8), allocatable :: ocnsal (:) ! ocean salinity
-  real(r8), allocatable :: uGust  (:) ! wind gust
   real(r8), allocatable :: lwdn   (:) ! long  wave, downward
   real(r8), allocatable :: swdn   (:) ! short wave, downward
   real(r8), allocatable :: swup   (:) ! short wave, upward
-  real(r8), allocatable :: prec   (:) ! precip
-  real(r8), allocatable :: prec_gust (:) ! atm precip for convective gustiness (kg/m^3)
 
   ! Diurnal cycle variables wrt flux
 
@@ -101,6 +98,12 @@ module seq_flux_mct
   real(r8), allocatable ::  ustar(:)  ! saved ustar
   real(r8), allocatable ::  re   (:)  ! saved re
   real(r8), allocatable ::  ssq  (:)  ! saved sq
+
+  ! Fields that are not obtained via GetFldPtr
+
+  real(r8), allocatable :: uGust  (:) ! wind gust
+  real(r8), allocatable :: prec   (:) ! precip
+  real(r8), allocatable :: prec_gust (:) ! atm precip for convective gustiness (kg/m^3)
 
   ! Conversion from degrees to radians
 

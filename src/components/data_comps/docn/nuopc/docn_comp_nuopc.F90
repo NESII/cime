@@ -285,6 +285,9 @@ module docn_comp_nuopc
     ! for the ocn_present flag being set to false (i.e. null mode)
     ! NOTE: only the ocn_prognostic flag is needed below
 
+    !DEBUG - hard wire for now to get atm/ocn flux computation working
+    ocn_prognostic = .true.
+
     if (ocn_prognostic) then
        unpack_import = .true.
     else
@@ -349,7 +352,6 @@ module docn_comp_nuopc
     integer, intent(out) :: rc
 
     ! local variables
-    integer(IN)              :: phase
     character(ESMF_MAXSTR)   :: convCIM, purpComp
     type(ESMF_Grid)          :: Egrid
     type(ESMF_Mesh)          :: Emesh
@@ -383,26 +385,6 @@ module docn_comp_nuopc
     call shr_file_getLogUnit (shrlogunit)
     call shr_file_getLogLevel(shrloglev)
     call shr_file_setLogUnit (logunit)
-
-    !----------------------------------------------------------------------------
-    ! If component is prognostic, map ESMF state to attribute vector
-    !----------------------------------------------------------------------------
-
-    phase = 1  !TODO - this is hard-wired for now and needs to be generalized
-
-    if (phase .ne. 1) then
-       if (ocn_prognostic) then
-          do n = 1,fldsToOcn%num
-             connected = NUOPC_IsConnected(importState, fieldName=fldsToOcn%shortname(n))
-             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) call shr_sys_abort()
-             if (.not. connected) then
-                call shr_sys_abort("Ocn prognostic .true. requires connection for " // trim(fldsToOcn%shortname(n)))
-             end if
-          end do
-          call shr_nuopc_grid_StateToArray(importState, x2d%rattr, seq_flds_x2o_fields, grid_option, rc=rc)
-          if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
-       end if
-    endif
 
     !--------------------------------
     ! call docn init routine
@@ -693,6 +675,12 @@ module docn_comp_nuopc
     !--------------------------------
 
     call shr_nuopc_grid_ArrayToState(d2x%rattr, seq_flds_o2x_fields, exportState, grid_option, rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
+
+    ! Need to reset scalars that will be used after initialization, since shr_nuopc_grid_ArrayToState calls
+    ! shr_nuopc_methods_State_reset(state, value = -9999._R8, rc=rc) - so that all scalar values will be set to -9999
+    ! unless they are reset
+    call shr_nuopc_methods_State_SetScalar(0.0_r8,         seq_flds_scalar_index_dead_comps, exportState, mpicom, rc)
     if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
 
     !--------------------------------

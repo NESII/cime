@@ -94,35 +94,10 @@ module dice_comp_mod
   !  real(R8)    , pointer :: ifrac0(:)
 
   !--------------------------------------------------------------------------
-  integer(IN),parameter :: ktrans = 42
-  character(16),parameter  :: avofld(1:ktrans) = &
-     (/"So_t            ","So_s            ","So_u            ","So_v            ", &
-       "So_dhdx         ","So_dhdy         ","Fioo_q          ","Sa_z            ", &
-       "Sa_u            ","Sa_v            ","Sa_ptem         ","Sa_tbot         ", &
-       "Sa_shum         ","Sa_dens         ","Faxa_swndr      ","Faxa_swvdr      ", &
-       "Faxa_swndf      ","Faxa_swvdf      ","Faxa_lwdn       ","Faxa_rain       ", &
-       "Faxa_snow       ","Si_t            ","Si_tref         ","Si_qref         ", &
-       "Si_ifrac        ","Si_avsdr        ","Si_anidr        ","Si_avsdf        ", &
-       "Si_anidf        ","Faii_taux       ","Faii_tauy       ","Faii_lat        ", &
-       "Faii_sen        ","Faii_lwup       ","Faii_evap       ","Faii_swnet      ", &
-       "Fioi_swpen      ","Fioi_melth      ","Fioi_meltw      ","Fioi_salt       ", &
-       "Fioi_taux       ","Fioi_tauy       " /)
-
-  character(16),parameter  :: avifld(1:ktrans) = &
-     (/"to              ","s               ","uo              ","vo              ", &
-       "dhdx            ","dhdy            ","q               ","z               ", &
-       "ua              ","va              ","ptem            ","tbot            ", &
-       "shum            ","dens            ","swndr           ","swvdr           ", &
-       "swndf           ","swvdf           ","lwdn            ","rain            ", &
-       "snow            ","t               ","tref            ","qref            ", &
-       "ifrac           ","avsdr           ","anidr           ","avsdf           ", &
-       "anidf           ","tauxa           ","tauya           ","lat             ", &
-       "sen             ","lwup            ","evap            ","swnet           ", &
-       "swpen           ","melth           ","meltw           ","salt            ", &
-       "tauxo           ","tauyo           " /)
+  integer(IN) , parameter :: ktrans = 1
+  character(16),parameter  :: avofld(1:ktrans) = (/"Si_ifrac"/)
+  character(16),parameter  :: avifld(1:ktrans) = (/"ifrac"/)
   !--------------------------------------------------------------------------
-
-  save
 
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 CONTAINS
@@ -256,7 +231,7 @@ CONTAINS
     call mct_aVect_init(i2x, rList=seq_flds_i2x_fields, lsize=lsize)
     call mct_aVect_zero(i2x)
 
-    km     = mct_aVect_indexRA(i2x,'Si_imask')
+    km     = mct_aVect_indexRA(i2x,'Si_imask', perrwith='quiet')
     kiFrac = mct_aVect_indexRA(i2x,'Si_ifrac')
     kt     = mct_aVect_indexRA(i2x,'Si_t')
     ktref  = mct_aVect_indexRA(i2x,'Si_tref')

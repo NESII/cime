@@ -10,6 +10,7 @@ module med_atmocn_mod
   use shr_nuopc_methods_mod , only: shr_nuopc_methods_FB_GetFldPtr
   use shr_nuopc_methods_mod , only: shr_nuopc_methods_ChkErr
   use seq_timemgr_mod       , only: seq_timemgr_EclockGetData
+  use med_constants_mod     , only: med_constants_dbug_flag
   use ESMF
   use NUOPC
 
@@ -32,17 +33,14 @@ module med_atmocn_mod
   real(r8) , pointer :: lons        (:) ! longitudes (degrees)
   integer  , pointer :: mask        (:) ! ocn domain mask: 0 <=> inactive cell
   integer  , pointer :: emask       (:) ! ocn mask on exchange grid decomp
-
   real(r8) , pointer :: anidr       (:) ! albedo: near infrared, direct
   real(r8) , pointer :: avsdr       (:) ! albedo: visible      , direct
   real(r8) , pointer :: anidf       (:) ! albedo: near infrared, diffuse
   real(r8) , pointer :: avsdf       (:) ! albedo: visible      , diffuse
-
   real(r8) , pointer :: swndr       (:) ! direct near-infrared  incident solar radiation
   real(r8) , pointer :: swndf       (:) ! diffuse near-infrared incident solar radiation
   real(r8) , pointer :: swvdr       (:) ! direct visible  incident solar radiation
   real(r8) , pointer :: swvdf       (:) ! diffuse visible incident solar radiation
-
   real(r8) , pointer :: uocn        (:) ! ocn velocity, zonal
   real(r8) , pointer :: vocn        (:) ! ocn velocity, meridional
   real(r8) , pointer :: tocn        (:) ! ocean temperature
@@ -74,16 +72,13 @@ module med_atmocn_mod
   real(r8) , pointer :: duu10n      (:) ! diagnostic: 10m wind speed squared
   real(r8) , pointer :: fswpen      (:) ! fraction of sw penetrating ocn surface layer
   real(r8) , pointer :: ocnsal      (:) ! ocean salinity
-  real(r8) , pointer :: uGust       (:) ! wind gust
   real(r8) , pointer :: lwdn        (:) ! long  wave, downward
   real(r8) , pointer :: swdn        (:) ! short wave, downward
   real(r8) , pointer :: swup        (:) ! short wave, upward
-  real(r8) , pointer :: prec        (:) ! precip
   real(r8) , pointer :: rainc       (:) ! rainc
   real(r8) , pointer :: rainl       (:) ! rainl
   real(r8) , pointer :: snowc       (:) ! snowc
   real(r8) , pointer :: snowl       (:) ! snowl
-  real(r8) , pointer :: prec_gust   (:) ! atm precip for convective gustiness (kg/m^3)
   real(r8) , pointer :: tbulk       (:) ! diurnal diagnostic: ocn bulk T
   real(r8) , pointer :: tskin       (:) ! diurnal diagnostic: ocn skin T
   real(r8) , pointer :: tskin_night (:) ! diurnal diagnostic: ocn skin T
@@ -107,7 +102,18 @@ module med_atmocn_mod
   real(r8) , pointer :: re          (:) ! saved re
   real(r8) , pointer :: ssq         (:) ! saved sq
 
+  ! Fields that are not obtained via GetFldPtr
+  real(r8) , pointer :: uGust       (:) ! wind gust
+  real(r8) , pointer :: prec        (:) ! precip
+  real(r8) , pointer :: prec_gust   (:) ! atm precip for convective gustiness (kg/m^3)
+
+  ! TODO: put flds_wiso in config and query it - for now just hard-wire it to false
+  logical :: flds_wiso = .false.
+
   ! Conversion from degrees to radians
+  integer                :: dbug_flag = med_constants_dbug_flag
+  integer                :: dbrc
+  character(len=1024)    :: tmpstr
   real(r8)    ,parameter :: const_pi      = SHR_CONST_PI       ! pi
   real(r8)    ,parameter :: const_deg2rad = const_pi/180.0_r8  ! deg to rads
   character(*),parameter :: u_FILE_u = &
@@ -116,43 +122,62 @@ module med_atmocn_mod
 contains
 !===============================================================================
 
-  subroutine med_atmocn_init(aoflux_grid, FBAtmOcn, FBAtm, FBOcn, FBFrac, rc)
-
+  subroutine med_atmocn_init(gcomp, aoflux_grid, FBAtmOcn, FBAtm, FBOcn, FBFrac, rc)
     !-----------------------------------------------------------------------
-    !
+    ! Initialize pointers to the module variables and then use the module
+    ! variables in the med_atmocn_ocnalb and med_atmocn_flux routine
+    !-----------------------------------------------------------------------
+
     ! Arguments
-    !
-    character(len=*)       :: aoflux_grid ! 'atm' or 'ocn'
-    type(ESMF_FieldBundle) :: FBAtmOcn    ! Atm/Ocn flux fields
-    type(ESMF_FieldBundle) :: FBAtm       ! Atm Import fields on atmocn flux grid
-    type(ESMF_FieldBundle) :: FBOcn       ! Ocn Import fields on atmocn flux grid
-    type(ESMF_FieldBundle) :: FBfrac      ! Fraction data for various components, on their grid
-    integer,   intent(out) :: rc
+    type(ESMF_GridComp)            :: gcomp
+    character(len=*) , intent(in)  :: aoflux_grid ! FBAtmOcn grid - 'atm' or 'ocn'
+    type(ESMF_FieldBundle)         :: FBAtmOcn    ! Atm/Ocn flux fields
+    type(ESMF_FieldBundle)         :: FBAtm       ! Atm Import fields on atmocn flux grid
+    type(ESMF_FieldBundle)         :: FBOcn       ! Ocn Import fields on atmocn flux grid
+    type(ESMF_FieldBundle)         :: FBfrac      ! Fraction data for various components, on their grid
+    integer          , intent(out) :: rc
     !
     ! Local variables
-    !
-    type(ESMF_Array)         :: lons_array
-    type(ESMF_Array)         :: lats_array
+    type(ESMF_VM)            :: vm
+    integer(in)              :: iam
     type(ESMF_Field)         :: lfield
     type(ESMF_Grid)          :: lgrid
-    integer(in)              :: lsize
+    type(ESMF_Mesh)          :: lmesh
+    type(ESMF_GeomType_Flag) :: geomtype
+    integer                  :: n
+    integer                  :: lsize
     real(r8), pointer        :: rmask(:)  ! ocn domain mask
     real(r8), pointer        :: ofrac(:)
     real(r8), pointer        :: ifrac(:)
+    integer                  :: dimCount
+    integer                  :: spatialDim
+    integer                  :: numOwnedElements
+    real(ESMF_KIND_R8), pointer :: ownedElemCoords(:)
     character(*),parameter   :: subName =   '(med_atmocn_init) '
     !-----------------------------------------------------------------------
+
+    if (dbug_flag > 5) then
+      call ESMF_LogWrite(trim(subname)//": called", ESMF_LOGMSG_INFO, rc=dbrc)
+    endif
+    rc = ESMF_SUCCESS
+
+    ! The following is for debugging
+    call ESMF_GridCompGet(gcomp, vm=vm, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    call ESMF_VMGet(vm, localPet=iam, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !----------------------------------
     ! atm/ocn fields
     !----------------------------------
 
-    call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='Sx_avsdr', fldptr1=avsdr, rc=rc)
+    call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='So_avsdr', fldptr1=avsdr, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='Sx_anidr', fldptr1=anidr, rc=rc)
+    call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='So_avsdf', fldptr1=avsdf, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='Sx_avsdf', fldptr1=avsdf, rc=rc)
+    call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='So_anidr', fldptr1=anidr, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='Sx_anidf', fldptr1=anidr, rc=rc)
+    call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='So_anidf', fldptr1=anidf, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='So_tref', fldptr1=tref, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -179,20 +204,25 @@ contains
     call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='Faox_evap', fldptr1=evap, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    !if (flds_wiso) then TODO - determine if these fields are connected
+    lsize = size(evap)
+    if (flds_wiso) then
        call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='Faox_evap_16O', fldptr1=evap_16O, rc=rc)
        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
        call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='Faox_evap_18O', fldptr1=evap_18O, rc=rc)
        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
        call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='Faox_evap_HDO', fldptr1=evap_HDO, rc=rc)
        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    !end if
+    else
+       allocate(evap_16O(lsize)); evap_16O(:) = 0._r8
+       allocate(evap_18O(lsize)); evap_18O(:) = 0._r8
+       allocate(evap_HDO(lsize)); evap_HDO(:) = 0._r8
+    end if
 
     call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='Faox_swdn', fldptr1=swdn, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='Faox_lwup', fldptr1=lwup, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='Faox_swup', fldptr1=swup, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='Faox_lwup', fldptr1=lwup, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='So_fswpen', fldptr1=fswpen, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -206,15 +236,15 @@ contains
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='So_regime_diurn', fldptr1=regime, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='So_warmMax_diurn', fldptr1=warmMax, rc=rc)
+    call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='So_warmmax_diurn', fldptr1=warmMax, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='So_windMax_diurn', fldptr1=windMax, rc=rc)
+    call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='So_windmax_diurn', fldptr1=windMax, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='So_warmMaxInc_diurn', fldptr1=warmMaxInc, rc=rc)
+    call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='So_warmmaxinc_diurn', fldptr1=warmMaxInc, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='So_SolInc_diurn', fldptr1=qSolInc, rc=rc)
+    call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='So_qsolinc_diurn', fldptr1=qSolInc, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='So_windInc_diurn', fldptr1=windInc, rc=rc)
+    call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='So_windinc_diurn', fldptr1=windInc, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='So_ninc_diurn', fldptr1=nInc, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -234,7 +264,7 @@ contains
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='So_qsolavg_diurn', fldptr1=qSolAvg, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='So_windMaxInc_diurn', fldptr1=windMaxInc, rc=rc)
+    call shr_nuopc_methods_FB_GetFldPtr(FBAtmOcn, fldname='So_windmaxinc_diurn', fldptr1=windmaxinc, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !----------------------------------
@@ -252,14 +282,18 @@ contains
     call shr_nuopc_methods_FB_GetFldPtr(FBOcn, fldname='So_fswpen', fldptr1=fswpen, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    ! if (flds_wiso) then TODO: determine if these fields are connected
+    if (flds_wiso) then
        call shr_nuopc_methods_FB_GetFldPtr(FBOcn, fldname='So_roce_16O', fldptr1=roce_16O, rc=rc)
        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
        call shr_nuopc_methods_FB_GetFldPtr(FBOcn, fldname='So_roce_18O', fldptr1=roce_18O, rc=rc)
        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
        call shr_nuopc_methods_FB_GetFldPtr(FBOcn, fldname='So_roce_HDO', fldptr1=roce_HDO, rc=rc)
        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    !end if
+    else
+       allocate(roce_16O(lsize)); roce_16O(:) = 0._r8
+       allocate(roce_18O(lsize)); roce_18O(:) = 0._r8
+       allocate(roce_HDO(lsize)); roce_HDO(:) = 0._r8
+    end if
 
     !----------------------------------
     ! Atm import fields
@@ -278,30 +312,31 @@ contains
     call shr_nuopc_methods_FB_GetFldPtr(FBAtm, fldname='Sa_shum', fldptr1=shum, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    !if (flds_wiso) then TODO: determine if these fields are connected
+    if (flds_wiso) then
        call shr_nuopc_methods_FB_GetFldPtr(FBAtm, fldname='Sa_shum_16O', fldptr1=shum_16O, rc=rc)
        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
        call shr_nuopc_methods_FB_GetFldPtr(FBAtm, fldname='Sa_shum_18O', fldptr1=shum_18O, rc=rc)
        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
        call shr_nuopc_methods_FB_GetFldPtr(FBAtm, fldname='Sa_shum_HDO', fldptr1=shum_HDO, rc=rc)
        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    !end if
+    else
+       allocate(shum_16O(lsize)); shum_16O(:) = 0._r8
+       allocate(shum_18O(lsize)); shum_18O(:) = 0._r8
+       allocate(shum_HDO(lsize)); shum_HDO(:) = 0._r8
+    end if
 
     call shr_nuopc_methods_FB_GetFldPtr(FBAtm, fldname='Sa_dens', fldptr1=dens, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_methods_FB_GetFldPtr(FBAtm, fldname='Sa_lwdn', fldptr1=lwdn, rc=rc)
+    call shr_nuopc_methods_FB_GetFldPtr(FBAtm, fldname='Faxa_lwdn', fldptr1=lwdn, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_methods_FB_GetFldPtr(FBAtm, fldname='Sa_rainc', fldptr1=rainc, rc=rc)
+    call shr_nuopc_methods_FB_GetFldPtr(FBAtm, fldname='Faxa_rainc', fldptr1=rainc, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_methods_FB_GetFldPtr(FBAtm, fldname='Sa_rainl', fldptr1=rainl, rc=rc)
+    call shr_nuopc_methods_FB_GetFldPtr(FBAtm, fldname='Faxa_rainl', fldptr1=rainl, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_methods_FB_GetFldPtr(FBAtm, fldname='Sa_snowc', fldptr1=snowc, rc=rc)
+    call shr_nuopc_methods_FB_GetFldPtr(FBAtm, fldname='Faxa_snowc', fldptr1=snowc, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_methods_FB_GetFldPtr(FBAtm, fldname='Sa_snowl', fldptr1=snowl, rc=rc)
+    call shr_nuopc_methods_FB_GetFldPtr(FBAtm, fldname='Faxa_snowl', fldptr1=snowl, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_methods_FB_GetFldPtr(FBAtm, fldname='Faxa_rainc', fldptr1=prec_gust, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-
     call shr_nuopc_methods_FB_GetFldPtr(FBAtm, fldname='Faxa_swndr', fldptr1=swndr, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     call shr_nuopc_methods_FB_GetFldPtr(FBAtm, fldname='Faxa_swndf', fldptr1=swndf, rc=rc)
@@ -311,30 +346,56 @@ contains
     call shr_nuopc_methods_FB_GetFldPtr(FBAtm, fldname='Faxa_swvdf', fldptr1=swvdf, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    !----------------------------------
-    ! Get lat, lon, mask, which is time-invariant
-    !----------------------------------
+    ! !----------------------------------
+    ! ! Get lat, lon, which are time-invariant
+    ! !----------------------------------
 
     ! The following assumes that all fields in FBAtmOcn have the same grid - so
     ! only need to query field 1
     call shr_nuopc_methods_FB_getFieldN(FBAtmOcn, fieldnum=1, field=lfield, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    call ESMF_FieldGet(lfield, grid=lgrid, rc=rc)
+    ! Determine if first field in either on  grid or a mesh
+    call ESMF_FieldGet(lfield, geomtype=geomtype, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    call ESMF_GridGetCoord(lgrid, coordDim=1, farrayPtr=lons, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call ESMF_GridGetCoord(lgrid, coordDim=2, farrayPtr=lats, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    if (geomtype == ESMF_GEOMTYPE_MESH) then
+       call ESMF_LogWrite(trim(subname)//" : FBATM is on a mesh ", ESMF_LOGMSG_INFO, rc=rc)
+       call ESMF_FieldGet(lfield, mesh=lmesh, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+       call ESMF_MeshGet(lmesh, spatialDim=spatialDim, numOwnedElements=numOwnedElements)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+       allocate(ownedElemCoords(spatialDim*numOwnedElements))
+       call ESMF_MeshGet(lmesh, ownedElemCoords=ownedElemCoords)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+       allocate(lons(numOwnedElements/spatialDim))
+       allocate(lats(numOwnedElements/spatialDim))
+       do n = 1,numOwnedElements/spatialDim
+          lons(n) = ownedElemCoords(2*n-1)
+          lats(n) = ownedElemCoords(2*n)
+       end do
+    else if (geomtype == ESMF_GEOMTYPE_GRID) then
+       call ESMF_LogWrite(trim(subname)//" : FBATM is on a grid ", ESMF_LOGMSG_INFO, rc=rc)
+       call ESMF_FieldGet(lfield, grid=lgrid, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+       call ESMF_GridGet(lgrid, dimCount=dimCount, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+       call ESMF_GridGetCoord(lgrid, coordDim=1, farrayPtr=lons, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+       call ESMF_GridGetCoord(lgrid, coordDim=2, farrayPtr=lats, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    else
+      call ESMF_LogWrite(trim(subname)//": ERROR FBATM must be either on a grid or a mesh", ESMF_LOGMSG_INFO, rc=rc)
+      rc = ESMF_FAILURE
+      return
+    end if
 
     !----------------------------------
-    ! Flux_diurnal cycle flux fields
+    ! Fields that are not obtained via GetFldPtr
     !----------------------------------
-
-    lsize = size(lons)
-    allocate(uGust(lsize)) ; uGust(:) =  0.0_r8
-    allocate(prec(lsize))  ; prec (:) =  0.0_r8
+    allocate(uGust(lsize))     ; uGust(:) =  0.0_r8
+    allocate(prec(lsize))      ; prec(:) =  0.0_r8
+    allocate(prec_gust(lsize)) ; prec_gust(:) =  0.0_r8
 
     !----------------------------------
     ! setup the compute mask.
@@ -355,34 +416,38 @@ contains
     allocate(mask(lsize)) ; mask(:) =  0.0_r8
 
     ! default compute everywhere, then "turn off" gridcells
-    mask(:) = 1
+    ! mask(:) = 1
 
-    allocate(rmask(lsize))      ;
-    allocate(ifrac(lsize))
-    allocate(ofrac(lsize))
+    ! allocate(rmask(lsize))      ;
+    ! allocate(ifrac(lsize))
+    ! allocate(ofrac(lsize))
 
-    ! use domain mask first
-    if (trim(aoflux_grid) == 'ocn') then
-       ! In this case, FBFrac is the FBFrac_o
-       call shr_nuopc_methods_FB_getFldPtr(FBFrac , 'ofrac' , rmask, rc=rc)
-       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    else
-       rmask(:) = 1._r8
-    end if
-    where (rmask(:) < 0.5_r8) mask(:) = 0   ! like nint
+    ! ! use domain mask first
+    ! if (trim(aoflux_grid) == 'ocn') then
+    !    ! In this case, FBFrac is the FBFrac_o
+    !    call shr_nuopc_methods_FB_getFldPtr(FBFrac , 'ofrac' , rmask, rc=rc)
+    !    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    ! else
+    !    rmask(:) = 1._r8
+    ! end if
+    ! where (rmask(:) < 0.5_r8) mask(:) = 0   ! like nint
 
-    ! then check ofrac + ifrac
-    call shr_nuopc_methods_FB_getFldPtr(FBFrac , fldname='ofrac' , fldptr1=ofrac, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_methods_FB_getFldPtr(FBFrac , fldname='ifrac' , fldptr1=ifrac, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    where (ofrac(:) + ifrac(:) <= 0.0_r8) mask(:) = 0
+    ! ! then check ofrac + ifrac
+    ! call shr_nuopc_methods_FB_getFldPtr(FBFrac , fldname='ofrac' , fldptr1=ofrac, rc=rc)
+    ! if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    ! call shr_nuopc_methods_FB_getFldPtr(FBFrac , fldname='ifrac' , fldptr1=ifrac, rc=rc)
+    ! if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    ! where (ofrac(:) + ifrac(:) <= 0.0_r8) mask(:) = 0
 
-    deallocate(rmask)
-    deallocate(ifrac)
-    deallocate(ofrac)
+    ! deallocate(rmask)
+    ! deallocate(ifrac)
+    ! deallocate(ofrac)
 
-    emask(:) = mask(:)
+    ! emask(:) = mask(:)
+
+    if (dbug_flag > 5) then
+      call ESMF_LogWrite(trim(subname)//": done", ESMF_LOGMSG_INFO, rc=dbrc)
+    endif
 
   end subroutine med_atmocn_init
 
@@ -401,13 +466,13 @@ contains
     integer , intent(out)  :: rc
     !
     ! Local variables
+    type(ESMF_VM)     :: vm
+    integer(in)       :: iam
     character(CL)     :: cvalue
     real(r8), pointer :: ofrac_o(:)
     real(r8), pointer :: ofrad_o(:)
     real(r8), pointer :: ifrac_o(:)
     real(r8), pointer :: ifrad_o(:)
-    real(r8), pointer :: swdn(:)    ! short wave, downward
-    real(r8), pointer :: swup(:)    ! short wave, upward
     integer(in)       :: lsize      ! local size
     logical	      :: flux_albav ! flux avg option
     logical	      :: update_alb ! was albedo updated
@@ -445,6 +510,12 @@ contains
     call NUOPC_CompAttributeGet(gcomp, name='orb_mvelpp', value=cvalue, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     read(cvalue,*) mvelpp
+
+    ! The following is for debugging
+    call ESMF_GridCompGet(gcomp, vm=vm, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    call ESMF_VMGet(vm, localPet=iam, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     ! Determine indices
 
@@ -677,7 +748,7 @@ contains
             duu10n,ustar, re  , ssq, &
             !missval should not be needed if flux calc
             !consistent with mrgx2a fraction
-            !duu10n,ustar, re  , ssq, missval = 0.0_r8 )
+            !duu10n,ustar, re  , ssq, missval = 0.0_r8, &
             cold_start=cold_start)
     else
        call shr_flux_atmocn (lsize , zbot , ubot, vbot, thbot, prec_gust, gust_fac, &

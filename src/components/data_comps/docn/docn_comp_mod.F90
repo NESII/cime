@@ -70,24 +70,12 @@ module docn_comp_mod
   real(R8), pointer      :: xc(:), yc(:) ! arryas of model latitudes and longitudes
 
   !--------------------------------------------------------------------------
-  character(len=*),parameter :: flds_strm = 'strm_h:strm_qbot'
-
-  integer(IN),parameter :: ktrans = 29
-  character(12),parameter  :: avifld(1:ktrans) = &
-       (/ "ifrac       ","pslv        ","duu10n      ","taux        ","tauy        ", &
-       "swnet       ","lat         ","sen         ","lwup        ","lwdn        ", &
-       "melth       ","salt        ","prec        ","snow        ","rain        ", &
-       "evap        ","meltw       ","rofl        ","rofi        ",                &
-       "t           ","u           ","v           ","dhdx        ","dhdy        ", &
-       "s           ","q           ","h           ","qbot        ","fswpen      "  /)
-
-  character(12),parameter  :: avofld(1:ktrans) = &
-       (/ "Si_ifrac    ","Sa_pslv     ","So_duu10n   ","Foxx_taux   ","Foxx_tauy   ", &
-       "Foxx_swnet  ","Foxx_lat    ","Foxx_sen    ","Foxx_lwup   ","Faxa_lwdn   ", &
-       "Fioi_melth  ","Fioi_salt   ","Faxa_prec   ","Faxa_snow   ","Faxa_rain   ", &
-       "Foxx_evap   ","Fioi_meltw  ","Foxx_rofl   ","Foxx_rofi   ",                &
-       "So_t        ","So_u        ","So_v        ","So_dhdx     ","So_dhdy     ", &
-       "So_s        ","Fioo_q      ","strm_h      ","strm_qbot   ","So_fswpen   "  /)
+  integer(IN)     , parameter :: ktrans = 8
+  character(12)   , parameter :: avifld(1:ktrans) = &
+       (/ "t           ","u           ","v           ","dhdx        ","dhdy        ","s           ","h           ","qbot        "/)
+  character(12)   , parameter  :: avofld(1:ktrans) = &
+       (/ "So_t        ","So_u        ","So_v        ","So_dhdx     ","So_dhdy     ","So_s        ","strm_h      ","strm_qbot   "/)
+  character(len=*), parameter :: flds_strm = 'strm_h:strm_qbot'
   !--------------------------------------------------------------------------
 
   save
@@ -255,12 +243,35 @@ CONTAINS
 
     kswnet = mct_aVect_indexRA(x2o,'Foxx_swnet')
     klwup  = mct_aVect_indexRA(x2o,'Foxx_lwup')
-    klwdn  = mct_aVect_indexRA(x2o,'Foxx_lwdn')
     ksen   = mct_aVect_indexRA(x2o,'Foxx_sen')
     klat   = mct_aVect_indexRA(x2o,'Foxx_lat')
-    kmelth = mct_aVect_indexRA(x2o,'Foxx_melth')
-    ksnow  = mct_aVect_indexRA(x2o,'Foxx_snow')
     krofi  = mct_aVect_indexRA(x2o,'Foxx_rofi')
+
+    ! The following is in place to support either the nuopc or mct interface
+    ! klwdn is required
+    klwdn  = mct_aVect_indexRA(x2o,'Faxa_lwdn', perrwith='quiet')
+    if (klwdn == 0) then
+       klwdn  = mct_aVect_indexRA(x2o,'Foxx_lwdn', perrwith='quiet')
+    end if
+    if (klwdn == 0) then
+       call shr_sys_abort(subname // 'ERROR: either Faxa_lwdn or Foxx_lwdn must be provided')
+    end if
+
+    kmelth = mct_aVect_indexRA(x2o,'Fioi_melth', perrwith='quiet')
+    if (kmelth == 0) then
+       kmelth = mct_aVect_indexRA(x2o,'Foxx_melth', perrwith='quiet')
+    end if
+    if (kmelth == 0) then
+       call shr_sys_abort(subname // 'ERROR: either Fioi_melth or Foxx_melth must be provided')
+    end if
+
+    ksnow = mct_aVect_indexRA(x2o,'Faxa_snow', perrwith='quiet')
+    if (ksnow == 0) then
+       ksnow  = mct_aVect_indexRA(x2o,'Foxx_snow', perrwith='quiet')
+    end if
+    if (ksnow == 0) then
+       call shr_sys_abort(subname // 'ERROR: either Faxa_snow or Foxx_snow must be provided')
+    end if
 
     call mct_aVect_init(avstrm, rList=flds_strm, lsize=lsize)
     call mct_aVect_zero(avstrm)
@@ -525,18 +536,18 @@ CONTAINS
                 !--- compute new temp ---
                 o2x%rAttr(kt,n) = somtp(n) + &
                      (x2o%rAttr(kswnet,n) + &  ! shortwave
-                     x2o%rAttr(klwup ,n) + &  ! longwave
-                     x2o%rAttr(klwdn ,n) + &  ! longwave
-                     x2o%rAttr(ksen  ,n) + &  ! sensible
-                     x2o%rAttr(klat  ,n) + &  ! latent
-                     x2o%rAttr(kmelth,n) - &  ! ice melt
-                     avstrm%rAttr(kqbot ,n) - &  ! flux at bottom
+                      x2o%rAttr(klwup ,n) + &  ! longwave
+                      x2o%rAttr(klwdn ,n) + &  ! longwave
+                      x2o%rAttr(ksen  ,n) + &  ! sensible
+                      x2o%rAttr(klat  ,n) + &  ! latent
+                      x2o%rAttr(kmelth,n) - &  ! ice melt
+                      avstrm%rAttr(kqbot ,n) - &  ! flux at bottom
                      (x2o%rAttr(ksnow,n)+x2o%rAttr(krofi,n))*latice) * &  ! latent by prec and roff
                      dt/(cpsw*rhosw*hn)
                 !--- compute ice formed or melt potential ---
                 o2x%rAttr(kq,n) = (tfreeze(n) - o2x%rAttr(kt,n))*(cpsw*rhosw*hn)/dt  ! ice formed q>0
                 o2x%rAttr(kt,n) = max(tfreeze(n),o2x%rAttr(kt,n))                    ! reset temp
-                somtp(n) = o2x%rAttr(kt,n)                                        ! save temp
+                somtp(n) = o2x%rAttr(kt,n)                                           ! save temp
              endif
           enddo
        endif   ! firstcall

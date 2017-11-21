@@ -11,7 +11,7 @@ module ESM
     driver_label_SetModelServices => label_SetModelServices, &
     driver_label_SetRunSequence   => label_SetRunSequence
 
-#ifdef ESMFUSE_NOTYET_cam
+#ifdef ESMFUSE_cam
   use  cam_comp_nuopc, only:   cam_SS => SetServices
 #endif
 #ifdef ESMFUSE_NOTYET_pop2
@@ -38,7 +38,6 @@ module ESM
 #ifdef ESMFUSE_NOTYET_cism
   use cism_comp_nuopc, only:   cism_SS => SetServices
 #endif
-
 
 #ifdef ESMFUSE_datm
   use datm_comp_nuopc, only: datm_SS => SetServices
@@ -434,7 +433,7 @@ module ESM
           return  ! bail out
 #endif
         elseif (trim(model) == "cam") then
-#ifdef ESMFUSE_NOTYET_cam
+#ifdef ESMFUSE_cam
           call NUOPC_DriverAddComp(driver, "ATM",  cam_SS, petList=petList, comp=child, rc=rc)
           if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 #else

@@ -367,14 +367,12 @@ module seq_flds_mod
      logical :: flds_bgc
      logical :: flds_wiso
      integer :: glc_nec
+     integer,  parameter :: nfldmax = 200
+     character(len=CLL)  :: cplflds_custom(nfldmax) = '' ! user specified new fields
 
      namelist /seq_cplflds_inparm/  &
           flds_co2a, flds_co2b, flds_co2c, flds_co2_dmsa, flds_wiso, glc_nec, &
           ice_ncat, seq_flds_i2o_per_cat, flds_bgc
-
-     ! user specified new fields
-     integer,  parameter :: nfldmax = 200
-     character(len=CLL)  :: cplflds_custom(nfldmax) = ''
 
      namelist /seq_cplflds_userspec/ &
           cplflds_custom
@@ -2549,6 +2547,8 @@ module seq_flds_mod
      !----------------------------------------------------------------------------
 
      seq_flds_dom_coord  = trim(dom_coord )
+     seq_flds_dom_other  = trim(dom_other )
+
      seq_flds_a2x_states = trim(a2x_states)
      seq_flds_x2a_states = trim(x2a_states)
      seq_flds_i2x_states = trim(i2x_states)
@@ -2570,7 +2570,6 @@ module seq_flds_mod
      seq_flds_w2x_states = trim(w2x_states)
      seq_flds_x2w_states = trim(x2w_states)
 
-     seq_flds_dom_other  = trim(dom_other )
      seq_flds_a2x_fluxes = trim(a2x_fluxes)
      seq_flds_x2a_fluxes = trim(x2a_fluxes)
      seq_flds_i2x_fluxes = trim(i2x_fluxes)

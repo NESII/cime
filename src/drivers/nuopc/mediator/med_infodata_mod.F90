@@ -14,7 +14,6 @@ module med_infodata_mod
   use seq_comm_mct, only: num_inst_wav
   use seq_flds_mod, only: seq_flds_scalar_num, seq_flds_scalar_name
   use seq_flds_mod, only: seq_flds_scalar_index_nx,  seq_flds_scalar_index_ny
-  use seq_flds_mod, only: seq_flds_scalar_index_phase
   use seq_flds_mod, only: seq_flds_scalar_index_flood_present
   use seq_flds_mod, only: seq_flds_scalar_index_rofice_present
   use seq_flds_mod, only: seq_flds_scalar_index_precip_fact
@@ -72,16 +71,7 @@ module med_infodata_mod
      logical                 :: glcice_present          ! does glc have iceberg coupling on
      logical                 :: glc_coupled_fluxes      ! does glc send fluxes to other components
                                                         ! (only relevant if glc_present is .true.)
-
      !--- set via components and may be time varying ---
-     integer(SHR_KIND_IN)    :: atm_phase = 1                  ! atm phase
-     integer(SHR_KIND_IN)    :: lnd_phase = 1                  ! lnd phase
-     integer(SHR_KIND_IN)    :: ice_phase = 1                  ! ice phase
-     integer(SHR_KIND_IN)    :: ocn_phase = 1                  ! ocn phase
-     integer(SHR_KIND_IN)    :: glc_phase = 1                  ! glc phase
-     integer(SHR_KIND_IN)    :: rof_phase = 1                  ! rof phase
-     integer(SHR_KIND_IN)    :: wav_phase = 1                  ! wav phase
-     integer(SHR_KIND_IN)    :: esp_phase = 1                  ! esp phase
      logical                 :: atm_aero = .false.             ! atmosphere aerosols
      real(SHR_KIND_R8)       :: nextsw_cday = -1.0_SHR_KIND_R8 ! calendar of next atm shortwave
      real(SHR_KIND_R8)       :: precip_fact = 1.0_SHR_KIND_R8  ! precip factor
@@ -289,7 +279,6 @@ CONTAINS
     type(ESMF_Field)            :: field
     type(ESMF_StateItem_Flag)   :: ItemType
     real(ESMF_KIND_R8), pointer :: farrayptr(:,:)
-    integer                     :: phase
     logical                     :: dead_comps
     real(ESMF_KIND_R8)          :: nextsw_cday, precip_fact
     character(len=*), parameter :: subname='(med_infodata_CopyInfodataToState)'
@@ -325,27 +314,6 @@ CONTAINS
         precip_fact = infodata%precip_fact
         dead_comps = infodata%dead_comps
 
-        if (type == 'cpl2atm') then
-           phase = infodata%atm_phase
-        elseif (type == 'cpl2ocn') then
-           phase = infodata%ocn_phase
-        elseif (type == 'cpl2ice') then
-           phase = infodata%ice_phase
-        elseif (type == 'cpl2lnd') then
-           phase = infodata%lnd_phase
-        elseif (type == 'cpl2rof') then
-           phase = infodata%rof_phase
-        elseif (type == 'cpl2wav') then
-           phase = infodata%wav_phase
-        elseif (type == 'cpl2glc') then
-           phase = infodata%glc_phase
-        else
-          call ESMF_LogWrite(trim(subname)//": ERROR in type = "//trim(type), ESMF_LOGMSG_INFO, line=__LINE__, file=u_FILE_u, rc=dbrc)
-          rc = ESMF_FAILURE
-          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-        endif
-
-        farrayptr(1,seq_flds_scalar_index_phase) = phase
         farrayptr(1,seq_flds_scalar_index_nextsw_cday) = nextsw_cday
         farrayptr(1,seq_flds_scalar_index_precip_fact) = precip_fact
         if (dead_comps) then
@@ -376,14 +344,6 @@ CONTAINS
        nextsw_cday             , &
        precip_fact             , &
        atm_aero                , &
-       glc_phase               , &
-       rof_phase               , &
-       atm_phase               , &
-       lnd_phase               , &
-       ocn_phase               , &
-       ice_phase               , &
-       wav_phase               , &
-       esp_phase               , &
        atm_resume              , &
        lnd_resume              , &
        ocn_resume              , &
@@ -413,14 +373,6 @@ CONTAINS
     real(SHR_KIND_R8),      optional, intent(OUT) :: nextsw_cday             ! calendar of next atm shortwave
     real(SHR_KIND_R8),      optional, intent(OUT) :: precip_fact             ! precip factor
     real(SHR_KIND_R8),      optional, intent(OUT) :: flux_epbalfact          ! adjusted precip factor
-    integer(SHR_KIND_IN),   optional, intent(OUT) :: atm_phase               ! atm phase
-    integer(SHR_KIND_IN),   optional, intent(OUT) :: lnd_phase               ! lnd phase
-    integer(SHR_KIND_IN),   optional, intent(OUT) :: ice_phase               ! ice phase
-    integer(SHR_KIND_IN),   optional, intent(OUT) :: ocn_phase               ! ocn phase
-    integer(SHR_KIND_IN),   optional, intent(OUT) :: glc_phase               ! glc phase
-    integer(SHR_KIND_IN),   optional, intent(OUT) :: rof_phase               ! rof phase
-    integer(SHR_KIND_IN),   optional, intent(OUT) :: wav_phase               ! wav phase
-    integer(SHR_KIND_IN),   optional, intent(OUT) :: esp_phase               ! wav phase
     logical,                optional, intent(OUT) :: atm_aero                ! atmosphere aerosols
     logical,                optional, intent(OUT) :: glc_valid_input
     character(SHR_KIND_CL), optional, intent(OUT) :: atm_resume(:) ! atm read resume state
@@ -450,14 +402,6 @@ CONTAINS
     if ( present(atm_aero)            ) atm_aero           = infodata%atm_aero
     if ( present(nextsw_cday)         ) nextsw_cday        = infodata%nextsw_cday
     if ( present(precip_fact)         ) precip_fact        = infodata%precip_fact
-    if ( present(atm_phase)           ) atm_phase          = infodata%atm_phase
-    if ( present(lnd_phase)           ) lnd_phase          = infodata%lnd_phase
-    if ( present(ice_phase)           ) ice_phase          = infodata%ice_phase
-    if ( present(ocn_phase)           ) ocn_phase          = infodata%ocn_phase
-    if ( present(glc_phase)           ) glc_phase          = infodata%glc_phase
-    if ( present(rof_phase)           ) rof_phase          = infodata%rof_phase
-    if ( present(wav_phase)           ) wav_phase          = infodata%wav_phase
-    if ( present(esp_phase)           ) esp_phase          = infodata%esp_phase
 
     if ( present(flux_epbalfact) ) then
        if (.not. present(flux_epbal)) then
@@ -550,14 +494,6 @@ CONTAINS
        nextsw_cday             , &
        precip_fact             , &
        atm_aero                , &
-       glc_phase               , &
-       rof_phase               , &
-       atm_phase               , &
-       lnd_phase               , &
-       ocn_phase               , &
-       ice_phase               , &
-       wav_phase               , &
-       esp_phase               , &
        atm_resume              , &
        lnd_resume              , &
        ocn_resume              , &
@@ -586,14 +522,6 @@ CONTAINS
     logical,                optional, intent(IN) :: atm_aero       ! atm aerosols
     real(SHR_KIND_R8),      optional, intent(IN) :: nextsw_cday    ! calendar of next atm shortwave
     real(SHR_KIND_R8),      optional, intent(IN) :: precip_fact    ! precip factor
-    integer(SHR_KIND_IN),   optional, intent(IN) :: atm_phase      ! atm phase
-    integer(SHR_KIND_IN),   optional, intent(IN) :: lnd_phase      ! lnd phase
-    integer(SHR_KIND_IN),   optional, intent(IN) :: ice_phase      ! ice phase
-    integer(SHR_KIND_IN),   optional, intent(IN) :: ocn_phase      ! ocn phase
-    integer(SHR_KIND_IN),   optional, intent(IN) :: glc_phase      ! glc phase
-    integer(SHR_KIND_IN),   optional, intent(IN) :: rof_phase      ! rof phase
-    integer(SHR_KIND_IN),   optional, intent(IN) :: wav_phase      ! wav phase
-    integer(SHR_KIND_IN),   optional, intent(IN) :: esp_phase      ! esp phase
     character(SHR_KIND_CL), optional, intent(IN) :: atm_resume(:)  ! atm resume
     character(SHR_KIND_CL), optional, intent(IN) :: lnd_resume(:)  ! lnd resume
     character(SHR_KIND_CL), optional, intent(IN) :: ice_resume(:)  ! ice resume
@@ -620,14 +548,6 @@ CONTAINS
     if ( present(atm_aero)              ) infodata%atm_aero           = atm_aero
     if ( present(nextsw_cday)           ) infodata%nextsw_cday        = nextsw_cday
     if ( present(precip_fact)           ) infodata%precip_fact        = precip_fact
-    if ( present(atm_phase)             ) infodata%atm_phase          = atm_phase
-    if ( present(lnd_phase)             ) infodata%lnd_phase          = lnd_phase
-    if ( present(ice_phase)             ) infodata%ice_phase          = ice_phase
-    if ( present(ocn_phase)             ) infodata%ocn_phase          = ocn_phase
-    if ( present(glc_phase)             ) infodata%glc_phase          = glc_phase
-    if ( present(rof_phase)             ) infodata%rof_phase          = rof_phase
-    if ( present(wav_phase)             ) infodata%wav_phase          = wav_phase
-    if ( present(esp_phase)             ) infodata%esp_phase          = esp_phase
 
     if ( present(atm_resume) ) then
        if (associated(infodata%pause_resume)) then

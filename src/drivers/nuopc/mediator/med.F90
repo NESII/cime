@@ -21,9 +21,7 @@ module MED
   use shr_kind_mod          , only: SHR_KIND_CL
   use seq_flds_mod
   use seq_comm_mct          , only: llogunit => logunit
-  use shr_sys_mod           , only: shr_sys_flush
-  use med_infodata_mod      , only: med_infodata_CopyStateToInfodata
-  use med_infodata_mod      , only: infodata=>med_infodata
+  use shr_sys_mod           , only: shr_sys_flush, shr_sys_abort
 
   use shr_nuopc_fldList_mod , only: shr_nuopc_fldList_Zero
   use shr_nuopc_fldList_mod , only: shr_nuopc_fldList_fromseqflds
@@ -42,6 +40,8 @@ module MED
   use shr_nuopc_methods_mod , only: shr_nuopc_methods_State_getNumFields
   use shr_nuopc_methods_mod , only: shr_nuopc_methods_ChkErr
   use shr_nuopc_methods_mod , only: shr_nuopc_methods_clock_timeprint
+
+  use med_infodata_mod      , only: med_infodata_CopyStateToInfodata, infodata=>med_infodata
 
   use med_internalstate_mod , only: InternalState
   use med_internalstate_mod , only: mapbilnr, mapconsf, mapconsd, mappatch, mapfcopy
@@ -76,18 +76,21 @@ module MED
   use med_phases_mod        , only: med_phases_prep_wav
   use med_phases_mod        , only: med_phases_prep_glc
   use med_phases_mod        , only: med_phases_accum_fast
+  use med_phases_mod        , only: med_phases_atmocn_init
+  use med_phases_mod        , only: med_phases_atmocn_ocnalb
+  use med_phases_mod        , only: med_phases_atmocn_flux
 
   use med_fraction_mod      , only: fraclist
   use med_fraction_mod      , only: med_fraction_setupflds
   use med_fraction_mod      , only: med_fraction_init
   use med_fraction_mod      , only: med_fraction_set
 
-  use med_constants_mod     , only: med_constants_dbug_flag 
-  use med_constants_mod     , only: med_constants_statewrite_flag 
-  use med_constants_mod     , only: med_constants_spval_init 
-  use med_constants_mod     , only: med_constants_spval 
-  use med_constants_mod     , only: med_constants_czero 
-  use med_constants_mod     , only: med_constants_ispval_mask 
+  use med_constants_mod     , only: med_constants_dbug_flag
+  use med_constants_mod     , only: med_constants_statewrite_flag
+  use med_constants_mod     , only: med_constants_spval_init
+  use med_constants_mod     , only: med_constants_spval
+  use med_constants_mod     , only: med_constants_czero
+  use med_constants_mod     , only: med_constants_ispval_mask
   use med_constants_mod     , only: med_constants_spval_rhfile
 
   implicit none
@@ -99,18 +102,26 @@ module MED
   integer            :: stat
   logical            :: isPresent
   character(len=1024):: msgString
+  type(ESMF_VM)      :: vm
+  integer            :: localPet
+  logical            :: mastertask
   character(len=*)  , parameter :: grid_arbopt = "grid_reg"   ! grid_reg or grid_arb
   real(ESMF_KIND_R8), parameter :: spval_init  = med_constants_spval_init
   real(ESMF_KIND_R8), parameter :: spval       = med_constants_spval
   real(ESMF_KIND_R8), parameter :: czero       = med_constants_czero
   integer           , parameter :: ispval_mask = med_constants_ispval_mask
-  type(ESMF_VM)      :: vm
-  integer            :: localPet
-  logical            :: mastertask
   character(*),parameter :: u_FILE_u = &
     __FILE__
 
   public SetServices
+
+  private InitializeP0
+  private InitializeIPDv03p1 ! advertise fields
+  private InitializeIPDv03p3 ! realize connected Fields with transfer action "provide"
+  private InitializeIPDv03p4 ! optionally modify the decomp/distr of transferred Grid/Mesh
+  private InitializeIPDv03p5 ! realize all Fields with transfer action "accept"
+  private DataInitialize     ! finish initialization and resolve data dependencies
+  private SetRunClock
 
   !-----------------------------------------------------------------------------
   contains
@@ -198,10 +209,10 @@ module MED
     call NUOPC_CompSetEntryPoint(gcomp, ESMF_METHOD_RUN, &
       phaseLabelList=(/"med_fraction_set"/), &
       userRoutine=mediator_routine_Run, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return 
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     call NUOPC_CompSpecialize(gcomp, specLabel=mediator_label_Advance, &
       specPhaseLabel="med_fraction_set", specRoutine=med_fraction_set, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return 
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !------------------
     ! prep and post phases for connectors
@@ -380,6 +391,26 @@ module MED
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !------------------
+    ! phase routines for atmocn flux computation and and ocean albedo computation
+    !------------------
+
+    call NUOPC_CompSetEntryPoint(gcomp, ESMF_METHOD_RUN, &
+      phaseLabelList=(/"med_phases_atmocn_ocnalb"/), &
+      userRoutine=mediator_routine_Run, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    call NUOPC_CompSpecialize(gcomp, specLabel=mediator_label_Advance, &
+      specPhaseLabel="med_phases_atmocn_ocnalb", specRoutine=med_phases_atmocn_ocnalb, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    call NUOPC_CompSetEntryPoint(gcomp, ESMF_METHOD_RUN, &
+      phaseLabelList=(/"med_phases_atmocn_flux"/), &
+      userRoutine=mediator_routine_Run, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    call NUOPC_CompSpecialize(gcomp, specLabel=mediator_label_Advance, &
+      specPhaseLabel="med_phases_atmocn_flux", specRoutine=med_phases_atmocn_flux, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    !------------------
     ! attach specializing method(s)
     ! -> NUOPC specializes by default --->>> first need to remove the default
     !------------------
@@ -489,20 +520,34 @@ module MED
     ! state. The nested state is returned as nestedState. nestedStateName will be used to name the
     ! newly created nested state.
 
-    call NUOPC_AddNamespace(importState, namespace="ATM", nestedStateName="NestedState-AtmImp", nestedState=is_local%wrap%NStateImp(compatm), rc=rc)
-    call NUOPC_AddNamespace(importState, namespace="OCN", nestedStateName="NestedState-OcnImp", nestedState=is_local%wrap%NStateImp(compocn), rc=rc)
-    call NUOPC_AddNamespace(importState, namespace="ICE", nestedStateName="NestedState-IceImp", nestedState=is_local%wrap%NStateImp(compice), rc=rc)
-    call NUOPC_AddNamespace(importState, namespace="LND", nestedStateName="NestedState-LndImp", nestedState=is_local%wrap%NStateImp(complnd), rc=rc)
-    call NUOPC_AddNamespace(importState, namespace="ROF", nestedStateName="NestedState-RofImp", nestedState=is_local%wrap%NStateImp(comprof), rc=rc)
-    call NUOPC_AddNamespace(importState, namespace="WAV", nestedStateName="NestedState-WavImp", nestedState=is_local%wrap%NStateImp(compwav), rc=rc)
-    call NUOPC_AddNamespace(importState, namespace="GLC", nestedStateName="NestedState-GlcImp", nestedState=is_local%wrap%NStateImp(compglc), rc=rc)
-    call NUOPC_AddNamespace(exportState, namespace="ATM", nestedStateName="NestedState-AtmExp", nestedState=is_local%wrap%NStateExp(compatm), rc=rc)
-    call NUOPC_AddNamespace(exportState, namespace="OCN", nestedStateName="NestedState-OcnExp", nestedState=is_local%wrap%NStateExp(compocn), rc=rc)
-    call NUOPC_AddNamespace(exportState, namespace="ICE", nestedStateName="NestedState-IceExp", nestedState=is_local%wrap%NStateExp(compice), rc=rc)
-    call NUOPC_AddNamespace(exportState, namespace="LND", nestedStateName="NestedState-LndExp", nestedState=is_local%wrap%NStateExp(complnd), rc=rc)
-    call NUOPC_AddNamespace(exportState, namespace="ROF", nestedStateName="NestedState-RofExp", nestedState=is_local%wrap%NStateExp(comprof), rc=rc)
-    call NUOPC_AddNamespace(exportState, namespace="WAV", nestedStateName="NestedState-WavExp", nestedState=is_local%wrap%NStateExp(compwav), rc=rc)
-    call NUOPC_AddNamespace(exportState, namespace="GLC", nestedStateName="NestedState-GlcExp", nestedState=is_local%wrap%NStateExp(compglc), rc=rc)
+    call NUOPC_AddNamespace(importState, namespace="ATM", nestedStateName="NestedState-AtmImp", &
+         nestedState=is_local%wrap%NStateImp(compatm), rc=rc)
+    call NUOPC_AddNamespace(importState, namespace="OCN", nestedStateName="NestedState-OcnImp", &
+         nestedState=is_local%wrap%NStateImp(compocn), rc=rc)
+    call NUOPC_AddNamespace(importState, namespace="ICE", nestedStateName="NestedState-IceImp", &
+         nestedState=is_local%wrap%NStateImp(compice), rc=rc)
+    call NUOPC_AddNamespace(importState, namespace="LND", nestedStateName="NestedState-LndImp", &
+         nestedState=is_local%wrap%NStateImp(complnd), rc=rc)
+    call NUOPC_AddNamespace(importState, namespace="ROF", nestedStateName="NestedState-RofImp", &
+         nestedState=is_local%wrap%NStateImp(comprof), rc=rc)
+    call NUOPC_AddNamespace(importState, namespace="WAV", nestedStateName="NestedState-WavImp", &
+         nestedState=is_local%wrap%NStateImp(compwav), rc=rc)
+    call NUOPC_AddNamespace(importState, namespace="GLC", nestedStateName="NestedState-GlcImp", &
+         nestedState=is_local%wrap%NStateImp(compglc), rc=rc)
+    call NUOPC_AddNamespace(exportState, namespace="ATM", nestedStateName="NestedState-AtmExp", &
+         nestedState=is_local%wrap%NStateExp(compatm), rc=rc)
+    call NUOPC_AddNamespace(exportState, namespace="OCN", nestedStateName="NestedState-OcnExp", &
+         nestedState=is_local%wrap%NStateExp(compocn), rc=rc)
+    call NUOPC_AddNamespace(exportState, namespace="ICE", nestedStateName="NestedState-IceExp", &
+         nestedState=is_local%wrap%NStateExp(compice), rc=rc)
+    call NUOPC_AddNamespace(exportState, namespace="LND", nestedStateName="NestedState-LndExp", &
+         nestedState=is_local%wrap%NStateExp(complnd), rc=rc)
+    call NUOPC_AddNamespace(exportState, namespace="ROF", nestedStateName="NestedState-RofExp", &
+         nestedState=is_local%wrap%NStateExp(comprof), rc=rc)
+    call NUOPC_AddNamespace(exportState, namespace="WAV", nestedStateName="NestedState-WavExp", &
+         nestedState=is_local%wrap%NStateExp(compwav), rc=rc)
+    call NUOPC_AddNamespace(exportState, namespace="GLC", nestedStateName="NestedState-GlcExp", &
+         nestedState=is_local%wrap%NStateExp(compglc), rc=rc)
 
     !------------------
     ! Zero out list of field information in for shr_nuopc_fldList_Type entries in the InternalState
@@ -520,197 +565,259 @@ module MED
     !------------------
     ! Create fldsTo(compatm)
     !------------------
-    call shr_nuopc_fldList_fromseqflds(fldsTo(compatm), seq_flds_x2a_states, "cannot provide", subname//":seq_flds_x2a_states", "bilinear", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsTo(compatm), seq_flds_x2a_states, "cannot provide", &
+         subname//":seq_flds_x2a_states", "bilinear", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_fromseqflds(fldsTo(compatm), seq_flds_x2a_fluxes, "cannot provide", subname//":seq_flds_x2a_fluxes", "conservefrac", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsTo(compatm), seq_flds_x2a_fluxes, "cannot provide", &
+         subname//":seq_flds_x2a_fluxes", "conservefrac", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-!    call shr_nuopc_fldList_fromseqflds(fldsTo(compatm), seq_flds_x2a_fluxes, "cannot provide", subname//":seq_flds_x2a_fluxes", "bilinear", rc=rc)
-!    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_Add(fldsTo(compatm), trim(seq_flds_scalar_name), "will provide", subname//":seq_flds_scalar_name", rc=rc)
+    !    call shr_nuopc_fldList_fromseqflds(fldsTo(compatm), seq_flds_x2a_fluxes, "cannot provide", &
+    !       subname//":seq_flds_x2a_fluxes", "bilinear", rc=rc)
+    !    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    call shr_nuopc_fldList_Add(fldsTo(compatm), trim(seq_flds_scalar_name), "will provide", &
+         subname//":seq_flds_scalar_name", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !------------------
     ! Create fldsFr(compatm)
     !------------------
 
-    call shr_nuopc_fldList_fromseqflds(fldsFr(compatm), seq_flds_a2x_states, "cannot provide", subname//":seq_flds_a2x_states", "bilinear", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsFr(compatm), seq_flds_a2x_states, "cannot provide", &
+         subname//":seq_flds_a2x_states", "bilinear", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_fromseqflds(fldsFr(compatm), seq_flds_a2x_fluxes, "cannot provide", subname//":seq_flds_a2x_fluxes", "conservefrac", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsFr(compatm), seq_flds_a2x_fluxes, "cannot provide", &
+         subname//":seq_flds_a2x_fluxes", "conservefrac", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-!    call shr_nuopc_fldList_fromseqflds(fldsFr(compatm), seq_flds_a2x_fluxes, "cannot provide", subname//":seq_flds_a2x_fluxes", "bilinear", rc=rc)
-!    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_Add(fldsFr(compatm), trim(seq_flds_scalar_name), "will provide", subname//":seq_flds_scalar_name", rc=rc)
+    !    call shr_nuopc_fldList_fromseqflds(fldsFr(compatm), seq_flds_a2x_fluxes, "cannot provide", &
+    !       subname//":seq_flds_a2x_fluxes", "bilinear", rc=rc)
+    !    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    call shr_nuopc_fldList_Add(fldsFr(compatm), trim(seq_flds_scalar_name), "will provide", &
+         subname//":seq_flds_scalar_name", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !------------------
     ! Create fldsTo(compocn)
     !------------------
 
-    call shr_nuopc_fldList_fromseqflds(fldsTo(compocn), seq_flds_x2o_states, "cannot provide", subname//":seq_flds_x2o_states", "bilinear", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsTo(compocn), seq_flds_x2o_states, "cannot provide", &
+         subname//":seq_flds_x2o_states", "bilinear", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_fromseqflds(fldsTo(compocn), seq_flds_x2o_fluxes, "cannot provide", subname//":seq_flds_x2o_fluxes", "conservefrac", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsTo(compocn), seq_flds_x2o_fluxes, "cannot provide", &
+         subname//":seq_flds_x2o_fluxes", "conservefrac", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-!    call shr_nuopc_fldList_fromseqflds(fldsTo(compocn), seq_flds_x2o_fluxes, "cannot provide", subname//":seq_flds_x2o_fluxes", "bilinear", rc=rc)
-!    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_Add(fldsTo(compocn), trim(seq_flds_scalar_name), "will provide", subname//":seq_flds_scalar_name", rc=rc)
+    !    call shr_nuopc_fldList_fromseqflds(fldsTo(compocn), seq_flds_x2o_fluxes, "cannot provide", &
+    !       subname//":seq_flds_x2o_fluxes", "bilinear", rc=rc)
+    !    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    call shr_nuopc_fldList_Add(fldsTo(compocn), trim(seq_flds_scalar_name), "will provide", &
+         subname//":seq_flds_scalar_name", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !------------------
     ! Create fldsFr(compocn)
     !------------------
 
-    call shr_nuopc_fldList_fromseqflds(fldsFr(compocn), seq_flds_o2x_states, "cannot provide", subname//":seq_flds_o2x_states", "bilinear", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsFr(compocn), seq_flds_o2x_states, "cannot provide", &
+         subname//":seq_flds_o2x_states", "bilinear", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_fromseqflds(fldsFr(compocn), seq_flds_o2x_fluxes, "cannot provide", subname//":seq_flds_o2x_fluxes", "conservefrac", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsFr(compocn), seq_flds_o2x_fluxes, "cannot provide", &
+         subname//":seq_flds_o2x_fluxes", "conservefrac", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-!    call shr_nuopc_fldList_fromseqflds(fldsFr(compocn), seq_flds_o2x_fluxes, "cannot provide", subname//":seq_flds_o2x_fluxes", "bilinear", rc=rc)
-!    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_Add(fldsFr(compocn), trim(seq_flds_scalar_name), "will provide", subname//":seq_flds_scalar_name", rc=rc)
+    !    call shr_nuopc_fldList_fromseqflds(fldsFr(compocn), seq_flds_o2x_fluxes, "cannot provide", &
+    !       subname//":seq_flds_o2x_fluxes", "bilinear", rc=rc)
+    !    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    call shr_nuopc_fldList_Add(fldsFr(compocn), trim(seq_flds_scalar_name), "will provide", &
+         subname//":seq_flds_scalar_name", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !------------------
     ! Create fldsTo(compice)
     !------------------
 
-    call shr_nuopc_fldList_fromseqflds(fldsTo(compice), seq_flds_x2i_states, "cannot provide", subname//":seq_flds_x2i_states", "bilinear", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsTo(compice), seq_flds_x2i_states, "cannot provide", &
+         subname//":seq_flds_x2i_states", "bilinear", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_fromseqflds(fldsTo(compice), seq_flds_x2i_fluxes, "cannot provide", subname//":seq_flds_x2i_fluxes", "conservefrac", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsTo(compice), seq_flds_x2i_fluxes, "cannot provide", &
+         subname//":seq_flds_x2i_fluxes", "conservefrac", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-!    call shr_nuopc_fldList_fromseqflds(fldsTo(compice), seq_flds_x2i_fluxes, "cannot provide", subname//":seq_flds_x2i_fluxes", "bilinear", rc=rc)
-!    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_Add(fldsTo(compice), trim(seq_flds_scalar_name), "will provide", subname//":seq_flds_scalar_name", rc=rc)
+    !    call shr_nuopc_fldList_fromseqflds(fldsTo(compice), seq_flds_x2i_fluxes, "cannot provide", &
+    !       subname//":seq_flds_x2i_fluxes", "bilinear", rc=rc)
+    !    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    call shr_nuopc_fldList_Add(fldsTo(compice), trim(seq_flds_scalar_name), "will provide", &
+         subname//":seq_flds_scalar_name", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !------------------
     ! Create fldsFr(compice)
     !------------------
 
-    call shr_nuopc_fldList_fromseqflds(fldsFr(compice), seq_flds_i2x_states, "cannot provide", subname//":seq_flds_i2x_states", "bilinear", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsFr(compice), seq_flds_i2x_states, "cannot provide", &
+         subname//":seq_flds_i2x_states", "bilinear", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_fromseqflds(fldsFr(compice), seq_flds_i2x_fluxes, "cannot provide", subname//":seq_flds_i2x_fluxes", "conservefrac", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsFr(compice), seq_flds_i2x_fluxes, "cannot provide", &
+         subname//":seq_flds_i2x_fluxes", "conservefrac", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-!    call shr_nuopc_fldList_fromseqflds(fldsFr(compice), seq_flds_i2x_fluxes, "cannot provide", subname//":seq_flds_i2x_fluxes", "bilinear", rc=rc)
-!    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_Add(fldsFr(compice), trim(seq_flds_scalar_name), "will provide", subname//":seq_flds_scalar_name", rc=rc)
+    !    call shr_nuopc_fldList_fromseqflds(fldsFr(compice), seq_flds_i2x_fluxes, "cannot provide", &
+    !       subname//":seq_flds_i2x_fluxes", "bilinear", rc=rc)
+    !    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    call shr_nuopc_fldList_Add(fldsFr(compice), trim(seq_flds_scalar_name), "will provide", &
+         subname//":seq_flds_scalar_name", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !------------------
     ! Create fldsTo(complnd)
     !------------------
 
-    call shr_nuopc_fldList_fromseqflds(fldsTo(complnd), seq_flds_x2l_states, "cannot provide", subname//":seq_flds_x2l_states", "bilinear", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsTo(complnd), seq_flds_x2l_states, "cannot provide", &
+         subname//":seq_flds_x2l_states", "bilinear", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_fromseqflds(fldsTo(complnd), seq_flds_x2l_fluxes, "cannot provide", subname//":seq_flds_x2l_fluxes", "conservefrac", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsTo(complnd), seq_flds_x2l_fluxes, "cannot provide", &
+         subname//":seq_flds_x2l_fluxes", "conservefrac", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-!    call shr_nuopc_fldList_fromseqflds(fldsTo(complnd), seq_flds_x2l_fluxes, "cannot provide", subname//":seq_flds_x2l_fluxes", "bilinear", rc=rc)
-!    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_Add(fldsTo(complnd), trim(seq_flds_scalar_name), "will provide", subname//":seq_flds_scalar_name", rc=rc)
+    !    call shr_nuopc_fldList_fromseqflds(fldsTo(complnd), seq_flds_x2l_fluxes, "cannot provide", &
+    !       subname//":seq_flds_x2l_fluxes", "bilinear", rc=rc)
+    !    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    call shr_nuopc_fldList_Add(fldsTo(complnd), trim(seq_flds_scalar_name), "will provide", &
+         subname//":seq_flds_scalar_name", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !------------------
     ! Create fldsFr(complnd)
     !------------------
 
-    call shr_nuopc_fldList_fromseqflds(fldsFr(complnd), seq_flds_l2x_states, "cannot provide", subname//":seq_flds_l2x_states", "bilinear", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsFr(complnd), seq_flds_l2x_states, "cannot provide", &
+         subname//":seq_flds_l2x_states", "bilinear", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_fromseqflds(fldsFr(complnd), seq_flds_l2x_fluxes, "cannot provide", subname//":seq_flds_l2x_fluxes", "conservefrac", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsFr(complnd), seq_flds_l2x_fluxes, "cannot provide", &
+         subname//":seq_flds_l2x_fluxes", "conservefrac", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-!    call shr_nuopc_fldList_fromseqflds(fldsFr(complnd), seq_flds_l2x_fluxes, "cannot provide", subname//":seq_flds_l2x_fluxes", "bilinear", rc=rc)
-!    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_Add(fldsFr(complnd), trim(seq_flds_scalar_name), "will provide", subname//":seq_flds_scalar_name", rc=rc)
+    !    call shr_nuopc_fldList_fromseqflds(fldsFr(complnd), seq_flds_l2x_fluxes, "cannot provide", &
+    !       subname//":seq_flds_l2x_fluxes", "bilinear", rc=rc)
+    !    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    call shr_nuopc_fldList_Add(fldsFr(complnd), trim(seq_flds_scalar_name), "will provide", &
+         subname//":seq_flds_scalar_name", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !------------------
     ! Create fldsTo(comprof)
     !------------------
 
-    call shr_nuopc_fldList_fromseqflds(fldsTo(comprof), seq_flds_x2r_states, "cannot provide", subname//":seq_flds_x2r_states", "bilinear", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsTo(comprof), seq_flds_x2r_states, "cannot provide", &
+         subname//":seq_flds_x2r_states", "bilinear", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_fromseqflds(fldsTo(comprof), seq_flds_x2r_fluxes, "cannot provide", subname//":seq_flds_x2r_fluxes", "conservefrac", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsTo(comprof), seq_flds_x2r_fluxes, "cannot provide", &
+         subname//":seq_flds_x2r_fluxes", "conservefrac", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-!    call shr_nuopc_fldList_fromseqflds(fldsTo(comprof), seq_flds_x2r_fluxes, "cannot provide", subname//":seq_flds_x2r_fluxes", "bilinear", rc=rc)
-!    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_Add(fldsTo(comprof), trim(seq_flds_scalar_name), "will provide", subname//":seq_flds_scalar_name", rc=rc)
+    !    call shr_nuopc_fldList_fromseqflds(fldsTo(comprof), seq_flds_x2r_fluxes, "cannot provide", &
+    !       subname//":seq_flds_x2r_fluxes", "bilinear", rc=rc)
+    !    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    call shr_nuopc_fldList_Add(fldsTo(comprof), trim(seq_flds_scalar_name), "will provide", &
+         subname//":seq_flds_scalar_name", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !------------------
     ! Create fldsFr(comprof)
     !------------------
 
-    call shr_nuopc_fldList_fromseqflds(fldsFr(comprof), seq_flds_r2x_states, "cannot provide", subname//":seq_flds_r2x_states", "bilinear", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsFr(comprof), seq_flds_r2x_states, "cannot provide", &
+         subname//":seq_flds_r2x_states", "bilinear", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_fromseqflds(fldsFr(comprof), seq_flds_r2x_fluxes, "cannot provide", subname//":seq_flds_r2x_fluxes", "conservefrac", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsFr(comprof), seq_flds_r2x_fluxes, "cannot provide", &
+         subname//":seq_flds_r2x_fluxes", "conservefrac", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-!    call shr_nuopc_fldList_fromseqflds(fldsFr(comprof), seq_flds_r2x_fluxes, "cannot provide", subname//":seq_flds_r2x_fluxes", "bilinear", rc=rc)
-!    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_Add(fldsFr(comprof), trim(seq_flds_scalar_name), "will provide", subname//":seq_flds_scalar_name", rc=rc)
+    !    call shr_nuopc_fldList_fromseqflds(fldsFr(comprof), seq_flds_r2x_fluxes, "cannot provide", &
+    !       subname//":seq_flds_r2x_fluxes", "bilinear", rc=rc)
+    !    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    call shr_nuopc_fldList_Add(fldsFr(comprof), trim(seq_flds_scalar_name), "will provide", &
+         subname//":seq_flds_scalar_name", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !------------------
     ! Create fldsTo(compwav)
     !------------------
 
-    call shr_nuopc_fldList_fromseqflds(fldsTo(compwav), seq_flds_x2w_states, "cannot provide", subname//":seq_flds_x2w_states", "bilinear", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsTo(compwav), seq_flds_x2w_states, "cannot provide", &
+         subname//":seq_flds_x2w_states", "bilinear", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_fromseqflds(fldsTo(compwav), seq_flds_x2w_fluxes, "cannot provide", subname//":seq_flds_x2w_fluxes", "conservefrac", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsTo(compwav), seq_flds_x2w_fluxes, "cannot provide", &
+         subname//":seq_flds_x2w_fluxes", "conservefrac", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-!    call shr_nuopc_fldList_fromseqflds(fldsTo(compwav), seq_flds_x2w_fluxes, "cannot provide", subname//":seq_flds_x2w_fluxes", "bilinear", rc=rc)
-!    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_Add(fldsTo(compwav), trim(seq_flds_scalar_name), "will provide", subname//":seq_flds_scalar_name", rc=rc)
+    !    call shr_nuopc_fldList_fromseqflds(fldsTo(compwav), seq_flds_x2w_fluxes, "cannot provide", &
+    !       subname//":seq_flds_x2w_fluxes", "bilinear", rc=rc)
+    !    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    call shr_nuopc_fldList_Add(fldsTo(compwav), trim(seq_flds_scalar_name), "will provide", &
+         subname//":seq_flds_scalar_name", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !------------------
     ! Create fldsFr(compwav)
     !------------------
 
-    call shr_nuopc_fldList_fromseqflds(fldsFr(compwav), seq_flds_w2x_states, "cannot provide", subname//":seq_flds_w2x_states", "bilinear", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsFr(compwav), seq_flds_w2x_states, "cannot provide", &
+         subname//":seq_flds_w2x_states", "bilinear", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_fromseqflds(fldsFr(compwav), seq_flds_w2x_fluxes, "cannot provide", subname//":seq_flds_w2x_fluxes", "conservefrac", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsFr(compwav), seq_flds_w2x_fluxes, "cannot provide", &
+         subname//":seq_flds_w2x_fluxes", "conservefrac", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-!    call shr_nuopc_fldList_fromseqflds(fldsFr(compwav), seq_flds_w2x_fluxes, "cannot provide", subname//":seq_flds_rwx_fluxes", "bilinear", rc=rc)
-!    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_Add(fldsFr(compwav), trim(seq_flds_scalar_name), "will provide", subname//":seq_flds_scalar_name", rc=rc)
+    !    call shr_nuopc_fldList_fromseqflds(fldsFr(compwav), seq_flds_w2x_fluxes, "cannot provide", &
+    !       subname//":seq_flds_rwx_fluxes", "bilinear", rc=rc)
+    !    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    call shr_nuopc_fldList_Add(fldsFr(compwav), trim(seq_flds_scalar_name), "will provide", &
+         subname//":seq_flds_scalar_name", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !------------------
     ! Create fldsTo(compglc)
     !------------------
 
-    call shr_nuopc_fldList_fromseqflds(fldsTo(compglc), seq_flds_x2g_states, "cannot provide", subname//":seq_flds_x2g_states", "bilinear", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsTo(compglc), seq_flds_x2g_states, "cannot provide", &
+         subname//":seq_flds_x2g_states", "bilinear", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_fromseqflds(fldsTo(compglc), seq_flds_x2g_fluxes, "cannot provide", subname//":seq_flds_x2g_fluxes", "conservefrac", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsTo(compglc), seq_flds_x2g_fluxes, "cannot provide", &
+         subname//":seq_flds_x2g_fluxes", "conservefrac", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-!    call shr_nuopc_fldList_fromseqflds(fldsTo(compglc), seq_flds_x2g_fluxes, "cannot provide", subname//":seq_flds_x2g_fluxes", "bilinear", rc=rc)
-!    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_Add(fldsTo(compglc), trim(seq_flds_scalar_name), "will provide", subname//":seq_flds_scalar_name", rc=rc)
+    !    call shr_nuopc_fldList_fromseqflds(fldsTo(compglc), seq_flds_x2g_fluxes, "cannot provide", &
+    !       subname//":seq_flds_x2g_fluxes", "bilinear", rc=rc)
+    !    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    call shr_nuopc_fldList_Add(fldsTo(compglc), trim(seq_flds_scalar_name), "will provide", &
+         subname//":seq_flds_scalar_name", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !------------------
     ! Create fldsFr(compglc)
     !------------------
 
-    call shr_nuopc_fldList_fromseqflds(fldsFr(compglc), seq_flds_g2x_states, "cannot provide", subname//":seq_flds_g2x_states", "bilinear", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsFr(compglc), seq_flds_g2x_states, "cannot provide", &
+         subname//":seq_flds_g2x_states", "bilinear", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_fromseqflds(fldsFr(compglc), seq_flds_g2x_fluxes, "cannot provide", subname//":seq_flds_g2x_fluxes", "conservefrac", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsFr(compglc), seq_flds_g2x_fluxes, "cannot provide", &
+         subname//":seq_flds_g2x_fluxes", "conservefrac", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-!    call shr_nuopc_fldList_fromseqflds(fldsFr(compglc), seq_flds_g2x_fluxes, "cannot provide", subname//":seq_flds_g2x_fluxes", "bilinear", rc=rc)
-!    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_Add(fldsFr(compglc), trim(seq_flds_scalar_name), "will provide", subname//":seq_flds_scalar_name", rc=rc)
+    !    call shr_nuopc_fldList_fromseqflds(fldsFr(compglc), seq_flds_g2x_fluxes, "cannot provide", &
+    !       subname//":seq_flds_g2x_fluxes", "bilinear", rc=rc)
+    !    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    call shr_nuopc_fldList_Add(fldsFr(compglc), trim(seq_flds_scalar_name), "will provide", &
+         subname//":seq_flds_scalar_name", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !------------------
     ! Create fldsAtmOcn
     !------------------
 
-    call shr_nuopc_fldList_fromseqflds(fldsAtmOcn, seq_flds_xao_states, "cannot provide", subname//":seq_flds_xao_states", "bilinear", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsAtmOcn, seq_flds_xao_states, "cannot provide", &
+         subname//":seq_flds_xao_states", "bilinear", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_fromseqflds(fldsAtmOcn, seq_flds_xao_albedo, "cannot provide", subname//":seq_flds_xao_albedo", "bilinear", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsAtmOcn, seq_flds_xao_albedo, "cannot provide", &
+         subname//":seq_flds_xao_albedo", "bilinear", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_fromseqflds(fldsAtmOcn, seq_flds_xao_diurnl, "cannot provide", subname//":seq_flds_xao_diurnl", "bilinear", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsAtmOcn, seq_flds_xao_diurnl, "cannot provide", &
+         subname//":seq_flds_xao_diurnl", "bilinear", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_fldList_fromseqflds(fldsAtmOcn, seq_flds_xao_fluxes, "cannot provide", subname//":seq_flds_xao_fluxes", "conservefrac", rc=rc)
-!    call shr_nuopc_fldList_fromseqflds(fldsAtmOcn, seq_flds_xao_fluxes, "cannot provide", subname//":seq_flds_xao_fluxes", "bilinear", rc=rc)
+    call shr_nuopc_fldList_fromseqflds(fldsAtmOcn, seq_flds_xao_fluxes, "cannot provide", &
+         subname//":seq_flds_xao_fluxes", "conservefrac", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    !    call shr_nuopc_fldList_fromseqflds(fldsAtmOcn, seq_flds_xao_fluxes, "cannot provide", &
+    !       subname//":seq_flds_xao_fluxes", "bilinear", rc=rc)
+    !    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !------------------
     ! Mediator advertisement
@@ -719,9 +826,11 @@ module MED
     ! Call NUOPC_Advertise from the mediator for each entry in the flds[Fr,To]XXX
 
     do n1 = 1,ncomps
-      call shr_nuopc_fldList_Advertise(is_local%wrap%NStateImp(n1), fldsFr(n1), subname//':Fr'//trim(compname(n1)), rc)
+       call shr_nuopc_fldList_Advertise(is_local%wrap%NStateImp(n1), fldsFr(n1), &
+            subname//':Fr'//trim(compname(n1)), rc)
       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-      call shr_nuopc_fldList_Advertise(is_local%wrap%NStateExp(n1), fldsTo(n1), subname//':To'//trim(compname(n1)), rc)
+      call shr_nuopc_fldList_Advertise(is_local%wrap%NStateExp(n1), fldsTo(n1), &
+           subname//':To'//trim(compname(n1)), rc)
       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     enddo
 
@@ -1047,16 +1156,16 @@ module MED
               enddo
               enddo
 
-!--- tcraig, hardwire i direction wraparound, temporary
-!--- tcraig, now getting info from model distgrid, see above
-!              allocate(connectionList(1))
-!              nxg = maxIndexPTile(1,1) - minIndexPTile(1,1) + 1
-!              write(msgstring,*) trim(subname)//trim(string),': connlist nxg = ',nxg
-!              call ESMF_LogWrite(trim(msgstring), ESMF_LOGMSG_INFO, rc=rc)
-!              if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-!              call ESMF_DistGridConnectionSet(connectionList(1), tileIndexA=1, &
-!                tileIndexB=1, positionVector=(/nxg, 0/), rc=rc)
-!              if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+              !--- tcraig, hardwire i direction wraparound, temporary
+              !--- tcraig, now getting info from model distgrid, see above
+              !              allocate(connectionList(1))
+              !              nxg = maxIndexPTile(1,1) - minIndexPTile(1,1) + 1
+              !              write(msgstring,*) trim(subname)//trim(string),': connlist nxg = ',nxg
+              !              call ESMF_LogWrite(trim(msgstring), ESMF_LOGMSG_INFO, rc=rc)
+              !              if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+              !              call ESMF_DistGridConnectionSet(connectionList(1), tileIndexA=1, &
+              !                tileIndexB=1, positionVector=(/nxg, 0/), rc=rc)
+              !              if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
               ! create the new DistGrid with the same minIndexPTile and maxIndexPTile,
               ! but with a default regDecompPTile
@@ -1162,21 +1271,21 @@ module MED
     integer, intent(out) :: rc
 
     ! local variables
-!    type(ESMF_Field)            :: field, field1, field2
-!    type(ESMF_Field)            :: fieldArea
-!    type(ESMF_Grid)             :: grid
-    type(InternalState)         :: is_local
-!    real(ESMF_KIND_R8), pointer :: factorList(:)
-!    character(ESMF_MAXSTR)      :: name
-!    character(ESMF_MAXSTR) ,pointer  :: fieldNameList(:)
-    integer                     :: n1,n2
-!    type(ESMF_Field)            :: fieldAtm, fieldOcn
-!    type(ESMF_Array)            :: arrayOcn, arrayIce
-!    type(ESMF_RouteHandle)      :: RH_mapmask  ! unmasked conservative remapping
-!    type(ESMF_Grid)             :: gridAtmCoord, gridOcnCoord
-!    integer(ESMF_KIND_I4), pointer :: dataPtr_arrayOcn(:), dataPtr_arrayIce(:)
-!    real(ESMF_KIND_R8), pointer :: dataPtr_fieldOcn(:), dataPtr_fieldAtm(:)
-!    character(len=*),parameter  :: maprcfile = "seq_maps.rc"
+    !    type(ESMF_Field)                :: field, field1, field2
+    !    type(ESMF_Field)                :: fieldArea
+    !    type(ESMF_Grid)                 :: grid
+    type(InternalState)                  :: is_local
+    !    real(ESMF_KIND_R8), pointer     :: factorList(:)
+    !    character(ESMF_MAXSTR)          :: name
+    !    character(ESMF_MAXSTR) ,pointer :: fieldNameList(:)
+    integer                              :: n1,n2
+    !    type(ESMF_Field)                :: fieldAtm, fieldOcn
+    !    type(ESMF_Array)                :: arrayOcn, arrayIce
+    !    type(ESMF_RouteHandle)          :: RH_mapmask  ! unmasked conservative remapping
+    !    type(ESMF_Grid)                 :: gridAtmCoord, gridOcnCoord
+    !    integer(ESMF_KIND_I4), pointer  :: dataPtr_arrayOcn(:), dataPtr_arrayIce(:)
+    !    real(ESMF_KIND_R8), pointer     :: dataPtr_fieldOcn(:), dataPtr_fieldAtm(:)
+    !    character(len=*),parameter      :: maprcfile = "seq_maps.rc"
     character(len=*),parameter  :: subname='(module_MEDIATOR:InitializeIPDv03p5)'
 
     if (dbug_flag > 5) then
@@ -1293,12 +1402,16 @@ module MED
     logical                     :: atCorrectTime, allDone, connected
     type(InternalState)         :: is_local
     integer                     :: n1,n2,cntn1,cntn2
-    character(len=512)          :: fmapfile, smapfile, dmapfile, pmapfile, &
-                                   vmapfile, rmapfile, rimapfile, rlmapfile
+    character(len=512)          :: fmapfile, smapfile, dmapfile, pmapfile
+    character(len=512)          :: vmapfile, rmapfile, rimapfile, rlmapfile
     character(len=128)          :: value, rhname, rhname_file
     integer                     :: SrcMaskValue, DstMaskValue
     integer                     :: n
+    logical                     :: first_call = .true.
+    logical                     :: atm_prognostic
+    logical                     :: ocn_prognostic
     character(len=*), parameter :: subname='(module_MEDIATOR:DataInitialize)'
+    !-----------------------------------------------------------
 
     if (dbug_flag > 5) then
       call ESMF_LogWrite(trim(subname)//": called", ESMF_LOGMSG_INFO, rc=dbrc)
@@ -1319,47 +1432,15 @@ module MED
 
     ! get the current time out of the clock
     call ESMF_ClockGet(clock, currTime=time, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return 
-
-    ! initialze cumulative flag
-    allDone = .true.  ! reset if an item is found that is not done
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     ! check that all imported fields from ATM show correct timestamp
-    do n = 1,fldsFr(compatm)%num
-      call ESMF_StateGet(is_local%wrap%NStateImp(compatm), itemName=fldsFr(compatm)%shortname(n), itemType=itemType, rc=rc)
-      if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-      if (itemType /= ESMF_STATEITEM_NOTFOUND) then
-        connected = NUOPC_IsConnected(is_local%wrap%NStateImp(compatm), fieldName=fldsFr(compatm)%shortname(n), rc=rc)
-        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-        if (connected) then
-          call ESMF_StateGet(is_local%wrap%NStateImp(compatm), itemName=fldsFr(compatm)%shortname(n), field=field, rc=rc)
-          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-          atCorrectTime = NUOPC_IsAtTime(field, time, rc=rc)
-          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-          if (.not.atCorrectTime) then
-            call ESMF_LogWrite("MED - Initialize-Data-Dependency NOT YET SATISFIED!!!", ESMF_LOGMSG_INFO, rc=rc)
-            if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-            allDone = .false.
-            exit  ! break out of the loop when first not satisfied found
-          else
-            call ESMF_LogWrite("MED - Initialize-Data-Dependency SATISFIED!!!", ESMF_LOGMSG_INFO, rc=rc)
-            if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-          endif
-        endif
-      endif
-    enddo
-
     !TODO: need to loop through fields from all of the components from which
     !TODO: valid field data is expected at this time!!
 
-    if (allDone) then
-      ! -> set InitializeDataComplete Component Attribute to "true", indicating
-      ! to the driver that this Component has fully initialized its data
-      call NUOPC_CompAttributeSet(gcomp, name="InitializeDataComplete", value="true", rc=rc)
-      if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    if (first_call) then
 
       ! initialize the present flags in the mediator
-
       if (dbug_flag > 1) then
         call ESMF_LogWrite("Starting to initialize present flags", ESMF_LOGMSG_INFO)
         call ESMF_LogFlush()
@@ -1372,7 +1453,7 @@ module MED
       do n1 = 1,ncomps
         call ESMF_AttributeGet(gcomp, name=trim(compname(n1))//"_present", value=value, defaultValue="false", &
           convention="NUOPC", purpose="Instance", rc=rc)
-        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return 
+        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
         is_local%wrap%comp_present(n1) = (value == "true")
         write(msgString,'(A,L4)') trim(subname)//' comp_present(comp'//trim(compname(n1))//') = ',is_local%wrap%comp_present(n1)
         call ESMF_LogWrite(trim(msgString), ESMF_LOGMSG_INFO, rc=dbrc)
@@ -1396,8 +1477,9 @@ module MED
           call shr_nuopc_methods_State_GetNumFields(is_local%wrap%NStateImp(n1), cntn1, rc=rc) ! Import Field Count
           if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
           do n2 = 1,ncomps
-            if (cntn1 > 0 .and. is_local%wrap%comp_present(n2) .and. med_coupling_allowed(n1,n2) .and. &
-                                ESMF_StateIsCreated(is_local%wrap%NStateExp(n2),rc=rc)) then
+             if (cntn1 > 0 .and. &
+                  is_local%wrap%comp_present(n2) .and. med_coupling_allowed(n1,n2) .and. &
+                  ESMF_StateIsCreated(is_local%wrap%NStateExp(n2),rc=rc)) then
               call shr_nuopc_methods_State_GetNumFields(is_local%wrap%NStateExp(n2), cntn2, rc=rc) ! Import Field Count
               if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
               if (cntn2 > 0) then
@@ -1481,6 +1563,7 @@ module MED
             STflds=is_local%wrap%NStateExp(n1), name='FBExpAccum'//trim(compname(n1)), rc=rc)
           if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
+          ! Initialize FBfrac for component n1 - the field names will be fraclist(:,n1)
           call shr_nuopc_methods_FB_init(is_local%wrap%FBfrac(n1), STgeom=is_local%wrap%NStateExp(n1), &
             fieldNameList=fraclist(:,n1), name='FBfrac'//trim(compname(n1)), rc=rc)
           if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -1495,8 +1578,22 @@ module MED
               ESMF_StateIsCreated(is_local%wrap%NStateImp(n1),rc=rc) .and. &
               ESMF_StateIsCreated(is_local%wrap%NStateExp(n2),rc=rc)) then
             if (mastertask) write(llogunit,*) subname,' initializing FBs for '//trim(compname(n1))//'_'//trim(compname(n2))
-            call shr_nuopc_methods_FB_init(is_local%wrap%FBImp(n1,n2), STgeom=is_local%wrap%NStateExp(n2), &
-              STflds=is_local%wrap%NStateImp(n1), name='FBImp'//trim(compname(n1))//'_'//trim(compname(n2)), rc=rc)
+
+            ! Important Note - the NStateImp(n2) should be used here rather than NStateExp(n2), since
+            ! the export state might only contain control data and no grid information if
+            ! if the target component (n2) is not prognostic only receives control data back
+            ! But if STgeom=is_local%wrap%NStateImp(n2) is substituted for STgeom=is_local%wrap%NStateExp(n2) - then an error
+            ! occurs as follows
+            ! PET00 (med_fraction_init): called
+            ! PET00 (shr_nuopc_methods_FB_FieldRegrid) field not found: afrac,afrac
+            ! PET00 (med_fraction_set): called
+            ! PET00 (shr_nuopc_methods_FB_FieldRegrid) field not found: ifrac,ifrac
+
+            call shr_nuopc_methods_FB_init(          &
+                 is_local%wrap%FBImp(n1,n2),         &
+                 STgeom=is_local%wrap%NStateExp(n2), &
+                 STflds=is_local%wrap%NStateImp(n1), &
+                 name='FBImp'//trim(compname(n1))//'_'//trim(compname(n2)), rc=rc)
             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
           endif
         enddo
@@ -1507,15 +1604,19 @@ module MED
       ! Initialize AtmOcn FBs
       !----------------------------------------------------------
 
-      call shr_nuopc_methods_FB_init(is_local%wrap%FBAtmOcn_o, STgeom=is_local%wrap%NStateExp(compocn), &
+      ! Important Note - the NStateImp(compocn) or NStateImp(compatm) used here rather than NStateExp(n2), since
+      ! the export state might only contain control data and no grid information if
+      ! if the target component (n2) is not prognostic only receives control data back
+
+      call shr_nuopc_methods_FB_init(is_local%wrap%FBAtmOcn_o, STgeom=is_local%wrap%NStateImp(compocn), &
         fieldnamelist=fldsAtmOcn%shortname(1:fldsAtmOcn%num), name='FBAtmOcn_o', rc=rc)
       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
-      call shr_nuopc_methods_FB_init(is_local%wrap%FBAtmOcn_a, STgeom=is_local%wrap%NStateExp(compatm), &
+      call shr_nuopc_methods_FB_init(is_local%wrap%FBAtmOcn_a, STgeom=is_local%wrap%NStateImp(compatm), &
         fieldnamelist=fldsAtmOcn%shortname(1:fldsAtmOcn%num), name='FBAtmOcn_a', rc=rc)
       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
-      call shr_nuopc_methods_FB_init(is_local%wrap%FBaccumAtmOcn, STgeom=is_local%wrap%NStateExp(compocn), &
+      call shr_nuopc_methods_FB_init(is_local%wrap%FBaccumAtmOcn, STgeom=is_local%wrap%NStateImp(compocn), &
         fieldnamelist=fldsAtmOcn%shortname(1:fldsAtmOcn%num), name='FBaccumAtmOcn', rc=rc)
       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -1571,15 +1672,15 @@ module MED
             if (n1 == compocn .and. n2 == compwav) fmapfile=smapfile
             if (n1 == compice .and. n2 == compwav) fmapfile=smapfile
             ! tcraig, skip this for now, file too big and slow to read
-!            if (rhname_file == 'glc2ocn') then
-!              call NUOPC_CompAttributeGet(gcomp, name=trim(rhname_file)//"_rmapname", value=smapfile, rc=rc)
-!              if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU)) fmapfile=med_constants_spval_rhfile
-!              call ESMF_LogWrite(trim(rhname)//"_fmapname = "//trim(fmapfile), ESMF_LOGMSG_INFO)
+            ! if (rhname_file == 'glc2ocn') then
+            !   call NUOPC_CompAttributeGet(gcomp, name=trim(rhname_file)//"_rmapname", value=smapfile, rc=rc)
+            !   if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU)) fmapfile=med_constants_spval_rhfile
+            !   call ESMF_LogWrite(trim(rhname)//"_fmapname = "//trim(fmapfile), ESMF_LOGMSG_INFO)
 
-!              call NUOPC_CompAttributeGet(gcomp, name=trim(rhname_file)//"_rmapname", value=fmapfile, rc=rc)
-!              if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU)) fmapfile=med_constants_spval_rhfile
-!              call ESMF_LogWrite(trim(rhname)//"_fmapname = "//trim(fmapfile), ESMF_LOGMSG_INFO)
-!            endif
+            !   call NUOPC_CompAttributeGet(gcomp, name=trim(rhname_file)//"_rmapname", value=fmapfile, rc=rc)
+            !   if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU)) fmapfile=med_constants_spval_rhfile
+            !   call ESMF_LogWrite(trim(rhname)//"_fmapname = "//trim(fmapfile), ESMF_LOGMSG_INFO)
+            ! endif
 
             if (mastertask) write(llogunit,*) subname,' calling RH_init for '//trim(rhname)
             call shr_nuopc_methods_RH_Init(FBsrc=is_local%wrap%FBImp(n1,n1), FBdst=is_local%wrap%FBImp(n1,n2), &
@@ -1597,7 +1698,7 @@ module MED
               spvalfn=med_constants_spval_rhfile, mastertask=mastertask, &
               rc=rc)
             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
- 
+
           elseif (is_local%wrap%comp_present(n1) .and. is_local%wrap%comp_present(n2)) then
 
             call NUOPC_CompAttributeGet(gcomp, name=trim(rhname)//"_fmapname", value=fmapfile, rc=rc)
@@ -1634,7 +1735,7 @@ module MED
           call shr_nuopc_methods_FB_reset(is_local%wrap%FBExpAccum(n1), value=czero, rc=rc)
           if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
           call shr_nuopc_methods_FB_copy(is_local%wrap%FBImp(n1,n1), is_local%wrap%NStateImp(n1), rc=rc)
-          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return 
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
         endif
       enddo
 
@@ -1643,7 +1744,7 @@ module MED
       !---------------------------------------
 
       call med_fraction_init(gcomp,rc=rc)
-      if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return 
+      if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
 #if (1 == 0)
       !---------------------------------------
@@ -1668,8 +1769,139 @@ module MED
 
       endif
 #endif
-
+      first_call = .false.
     endif
+
+    !---------------------------------------
+    ! Finish atm initialization if needed
+    !---------------------------------------
+
+    ! First check to see if the import state from the atmosphere is all done
+    allDone = .true.  ! reset if an item is found that is not done
+    do n = 1,fldsFr(compatm)%num
+       call ESMF_StateGet(is_local%wrap%NStateImp(compatm), itemName=fldsFr(compatm)%shortname(n), itemType=itemType, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       if (itemType /= ESMF_STATEITEM_NOTFOUND) then
+          connected = NUOPC_IsConnected(is_local%wrap%NStateImp(compatm), fieldName=fldsFr(compatm)%shortname(n), rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          if (connected) then
+             call ESMF_StateGet(is_local%wrap%NStateImp(compatm), itemName=fldsFr(compatm)%shortname(n), field=field, rc=rc)
+             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             atCorrectTime = NUOPC_IsAtTime(field, time, rc=rc)
+             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             if (.not.atCorrectTime) then
+                call ESMF_LogWrite("MED - Initialize-Data-Dependency from ATM NOT YET SATISFIED!!!", ESMF_LOGMSG_INFO, rc=rc)
+                if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+                call ESMF_LogWrite("MED - Initialize-Data-Dependency Field is " // trim(fldsFr(compatm)%shortname(n)), ESMF_LOGMSG_INFO, rc=rc)
+                if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+                allDone = .false.
+                exit  ! break out of the loop when first not satisfied found
+             endif
+          endif
+       endif
+    enddo
+
+    ! TODO: Add a new logical that says that need to do data dependency from atm - and only execute the following block
+    ! if there is a data dependency from the atm
+    if (.not. allDone) then
+       ! Do the merge to the atmospheric component
+       call med_phases_prep_atm(gcomp, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       ! Copy the FBExp(compatm) to NstatExp(compatm)
+       call med_connectors_prep_med2atm(gcomp, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       ! Set the 'Updated' attributed for ALL fields in the exportState to the atm as 'true'
+       do n=1,fldsTo(compatm)%num
+          call ESMF_StateGet(is_local%wrap%NStateExp(compatm), itemName=fldsTo(compatm)%shortname(n), field=field, rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          call NUOPC_SetAttribute(field, name="Updated", value="true", rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+       end do
+
+       ! Connectors will be automatically called between the mediator and atm until allDone is true
+       call ESMF_LogWrite("MED - Initialize-Data-Dependency Sending Data to ATM", ESMF_LOGMSG_INFO, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    else
+       ! Copy the NstateImp(compatm) to FBImp(compatm)
+       call med_connectors_post_atm2med(gcomp, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+
+    if (allDone) then
+
+       !---------------------------------------
+       ! Initialize that atm/ocn flux calculation and ocean albedo calculation
+       !---------------------------------------
+
+       ! Check if the atm/ocn init should be done
+       ! This is the case if there is either a prognostic ocean or a prognostic atmosphere - (both are fine as well)
+       ! Note that xxx_prognostic flag will be .true. if fields are expected to be sent from the mediator to the compnent
+
+       atm_prognostic = .false.
+       if (is_local%wrap%med_coupling_active(compocn,compatm)) then
+          do n = 1,fldsTo(compatm)%num
+             call ESMF_StateGet(is_local%wrap%NStateExp(compatm), itemName=fldsTo(compatm)%shortname(n), &
+                  itemType=itemType, rc=rc)
+             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+             if (itemType /= ESMF_STATEITEM_NOTFOUND) then
+                connected = NUOPC_IsConnected(is_local%wrap%NStateExp(compatm), fieldName=fldsTo(compatm)%shortname(n), rc=rc)
+                if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+                if (connected) then
+                   exit  ! break out of the loop when first connected is found
+                end if
+             end if
+          end do
+          if (connected) then
+             atm_prognostic = .true.
+          end if
+       end if
+
+       ocn_prognostic = .false.
+       if (is_local%wrap%med_coupling_active(compatm,compocn)) then
+          do n = 1,fldsTo(compocn)%num
+             call ESMF_StateGet(is_local%wrap%NStateExp(compocn), itemName=fldsTo(compocn)%shortname(n), &
+                  itemType=itemType, rc=rc)
+             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+             if (itemType /= ESMF_STATEITEM_NOTFOUND) then
+                connected = NUOPC_IsConnected(is_local%wrap%NStateExp(compocn), fieldName=fldsTo(compocn)%shortname(n), rc=rc)
+                if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+                if (connected) then
+                   exit  ! break out of the loop when first connected is found
+                end if
+             end if
+          end do
+          if (connected) then
+             ocn_prognostic = .true.
+          end if
+       end if
+
+       if (atm_prognostic .or. ocn_prognostic) then
+          if (dbug_flag > 5) then
+             call ESMF_LogWrite(trim(subname)//": calling med_phases_atmocn_init", ESMF_LOGMSG_INFO, rc=dbrc)
+          endif
+          call med_phases_atmocn_init(gcomp, rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+       end if
+    end if
+
+    if (allDone) then
+       ! set InitializeDataComplete Component Attribute to "true", indicating
+       ! to the driver that this Component has fully initialized its data
+       call NUOPC_CompAttributeSet(gcomp, name="InitializeDataComplete", value="true", rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       call ESMF_LogWrite("MED - Initialize-Data-Dependency from ATM is SATISFIED!!!", ESMF_LOGMSG_INFO, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
 
     if (dbug_flag > 5) then
       call ESMF_LogWrite(trim(subname)//": done", ESMF_LOGMSG_INFO, rc=dbrc)

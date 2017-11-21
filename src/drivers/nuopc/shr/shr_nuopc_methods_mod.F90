@@ -93,6 +93,8 @@ module shr_nuopc_methods_mod
   public shr_nuopc_methods_UpdateTimestamp
   public shr_nuopc_methods_ChkErr
   public shr_nuopc_methods_Print_FieldExchInfo
+  public shr_nuopc_methods_FB_getFieldN
+  public shr_nuopc_methods_State_getFieldN
 
   private shr_nuopc_methods_Grid_Print
   private shr_nuopc_methods_Mesh_Print
@@ -102,7 +104,6 @@ module shr_nuopc_methods_mod
   private shr_nuopc_methods_FB_GeomPrint
   private shr_nuopc_methods_FB_GeomWrite
   private shr_nuopc_methods_FB_RWFields
-  private shr_nuopc_methods_FB_getFieldN
   private shr_nuopc_methods_FB_getFieldByName
   private shr_nuopc_methods_FieldPtr_compare1
   private shr_nuopc_methods_FieldPtr_compare2
@@ -116,7 +117,6 @@ module shr_nuopc_methods_mod
   private shr_nuopc_methods_FB_accumFB2ST
   private shr_nuopc_methods_State_UpdateTimestamp
   private shr_nuopc_methods_State_getNameN
-  private shr_nuopc_methods_State_getFieldN
   private shr_nuopc_methods_State_getFieldByName
   private shr_nuopc_methods_Field_UpdateTimestamp
   private shr_nuopc_methods_Distgrid_Match
@@ -714,6 +714,7 @@ module shr_nuopc_methods_mod
     type(ESMF_StaggerLoc)      :: staggerloc
     type(ESMF_MeshLoc)         :: meshloc
     character(len=*),parameter :: subname='(shr_nuopc_methods_FB_init)'
+    ! ----------------------------------------------
 
     if (dbug_flag > 10) then
       call ESMF_LogWrite(trim(subname)//": called", ESMF_LOGMSG_INFO, rc=dbrc)
@@ -725,7 +726,10 @@ module shr_nuopc_methods_mod
       lname = trim(name)
     endif
 
-    !--- check argument consistency and verify that geom argument has a field
+    !---------------------------------
+    ! check argument consistency and
+    ! verify that geom argument has a field
+    !---------------------------------
 
     if (present(fieldNameList) .and. present(FBflds) .and. present(STflds)) then
       call ESMF_LogWrite(trim(subname)//": ERROR only fieldNameList, FBflds, or STflds can be an argument", ESMF_LOGMSG_INFO, rc=rc)
@@ -757,7 +761,9 @@ module shr_nuopc_methods_mod
       return
     endif
 
-    !--- field name list
+    !---------------------------------
+    ! determine the names of fields that will be in FBout
+    !---------------------------------
 
     if (present(fieldNameList)) then
       fieldcount = size(fieldNameList)
@@ -798,7 +804,9 @@ module shr_nuopc_methods_mod
       return
     endif
 
-    !--- remove scalar field and blank fields from field bundle
+    !---------------------------------
+    ! remove scalar field and blank fields from field bundle
+    !---------------------------------
 
     do n = 1, fieldCount
       if (trim(lfieldnamelist(n)) == trim(seq_flds_scalar_name) .or. &
@@ -810,10 +818,14 @@ module shr_nuopc_methods_mod
       endif
     enddo  ! n
 
-    !--- field grid or mesh
+    !---------------------------------
+    ! create the grid (lgrid) or mesh(lmesh)
+    ! that will be used for FBout fields
+    !---------------------------------
 
     if (fieldcount > 0 .and. fieldcountgeom > 0) then
 
+      ! Look at only the first field in either the FBgeom and STgeom to get the grid
       if (present(FBgeom)) then
         call shr_nuopc_methods_FB_getFieldN(FBgeom, 1, lfield, rc=rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -828,16 +840,20 @@ module shr_nuopc_methods_mod
         return
       endif
 
+      ! Make sure the field is not empty - if it is return with an error
       call ESMF_FieldGet(lfield, status=status, rc=rc)
       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
       if (status == ESMF_FIELDSTATUS_EMPTY) then
-        call ESMF_LogWrite(trim(subname)//":"//trim(lname)//": ERROR field does not have a geom yet ", ESMF_LOGMSG_ERROR, line=__LINE__, file=u_FILE_u, rc=dbrc)
+         call ESMF_LogWrite(trim(subname)//":"//trim(lname)//": ERROR field does not have a geom yet ", &
+              ESMF_LOGMSG_ERROR, line=__LINE__, file=u_FILE_u, rc=dbrc)
         rc = ESMF_FAILURE
         return
       endif
 
+      ! Determine if first field in either FBgeom or STgeom is on a grid or a mesh
       call ESMF_FieldGet(lfield, geomtype=geomtype, rc=rc)
       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
       if (geomtype == ESMF_GEOMTYPE_GRID) then
         call ESMF_FieldGet(lfield, grid=lgrid, staggerloc=staggerloc, rc=rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -854,14 +870,19 @@ module shr_nuopc_methods_mod
 
     endif  ! fieldcount > 0
 
-    !--- create FBout
+    !---------------------------------
+    ! create FBout
+    !---------------------------------
 
     FBout = ESMF_FieldBundleCreate(name=trim(lname), rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     if (fieldcountgeom > 0) then
 
+      ! Now loop over all the fields in either FBgeom or STgeom
       do n = 1, fieldCount
+
+         ! Create the field on either lgrid or lmesh
         if (geomtype == ESMF_GEOMTYPE_GRID) then
           field = ESMF_FieldCreate(lgrid, ESMF_TYPEKIND_R8, staggerloc=staggerloc, name=lfieldNameList(n), rc=rc)
           if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -873,11 +894,14 @@ module shr_nuopc_methods_mod
           rc = ESMF_FAILURE
           return
         endif
+
+        ! Add the created field bundle FBout
         call ESMF_FieldBundleAdd(FBout, (/field/), rc=rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
         if (dbug_flag > 1) then
-          call ESMF_LogWrite(trim(subname)//":"//trim(lname)//":add  "//trim(lfieldNameList(n)), ESMF_LOGMSG_INFO, rc=dbrc)
+          call ESMF_LogWrite(trim(subname)//":"//trim(lname)//": add  "//trim(lfieldNameList(n)), ESMF_LOGMSG_INFO, rc=dbrc)
         endif
+
       enddo  ! fieldCount
 
     endif  ! fieldcountgeom
@@ -890,6 +914,7 @@ module shr_nuopc_methods_mod
     if (dbug_flag > 10) then
       call ESMF_LogWrite(trim(subname)//": done", ESMF_LOGMSG_INFO, rc=dbrc)
     endif
+
   end subroutine shr_nuopc_methods_FB_init
 
   !-----------------------------------------------------------------------------
@@ -1350,15 +1375,15 @@ module shr_nuopc_methods_mod
     logical :: okconsf, okconsd, okbilnr, okpatch, okfcopy
     character(len=*),parameter :: subname='(shr_nuopc_methods_FB_Regrid)'
 
-    rc = ESMF_SUCCESS
-    if (dbug_flag > 5) then
-      call ESMF_LogWrite(trim(subname)//trim(lstring)//": called", ESMF_LOGMSG_INFO, rc=dbrc)
-    endif
-
     if (present(string)) then
       lstring = trim(string)
     else
       lstring = " "
+    endif
+
+    rc = ESMF_SUCCESS
+    if (dbug_flag > 5) then
+      call ESMF_LogWrite(trim(subname)//trim(lstring)//": called", ESMF_LOGMSG_INFO, rc=dbrc)
     endif
 
     if (.not.present(rc)) then
@@ -2471,7 +2496,8 @@ module shr_nuopc_methods_mod
 
           write(msgString,'(a,2i8)') trim(subname)//": rankB, ranks = ",lrankB,lrankS
           call ESMF_LogWrite(trim(msgString), ESMF_LOGMSG_INFO, rc=dbrc)
-          call ESMF_LogWrite(trim(subname)//": ERROR rankB rankS not supported "//trim(lfieldnamelist(n)), ESMF_LOGMSG_ERROR, line=__LINE__, file=u_FILE_u, rc=dbrc)
+          call ESMF_LogWrite(trim(subname)//": ERROR rankB rankS not supported "//trim(lfieldnamelist(n)), &
+               ESMF_LOGMSG_ERROR, line=__LINE__, file=u_FILE_u, rc=dbrc)
           rc = ESMF_FAILURE
           return
 

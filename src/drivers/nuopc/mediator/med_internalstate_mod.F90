@@ -8,9 +8,9 @@ module med_internalstate_mod
   use shr_nuopc_fldList_mod, only: shr_nuopc_fldList_type
 
   implicit none
-  
+
   public
-  
+
   !--- Component arrays ---
 
   ! This defines the components and med_mapping_allowed is a starting point for what is
@@ -78,26 +78,26 @@ module med_internalstate_mod
     ! FBImp(n,k) is the FBImp(n,n) interpolated to grid k
     ! RH(n,k,m) is a RH from grid n to grid k, map type m
 
-    logical               :: comp_present(ncomps)    ! comp present flag
-    logical               :: med_coupling_active(ncomps,ncomps)  ! computes the active coupling
-    type(ESMF_State)      :: NStateImp(ncomps)      ! Import data from various component, on their grid
-    type(ESMF_State)      :: NStateExp(ncomps)      ! Export data to various component, on their grid
-    type(ESMF_FieldBundle):: FBImp(ncomps,ncomps)    ! Import data from various components interpolated to various grids
-    type(ESMF_FieldBundle):: FBImpAccum(ncomps)      ! Accumulator for various components import on their grid
-    integer               :: FBImpAccumcnt(ncomps)   ! Accumulator counter for each FBImpAccum
-    type(ESMF_FieldBundle):: FBExp(ncomps)           ! Export data for various components, on their grid
-    type(ESMF_FieldBundle):: FBExpAccum(ncomps)      ! Accumulator for various components export on their grid
-    integer               :: FBExpAccumcnt(ncomps)   ! Accumulator counter for each FBExpAccum
-    integer               :: conn_prep_cnt(ncomps)   ! Connector prep count
-    integer               :: conn_post_cnt(ncomps)   ! Connector post count
-    type(ESMF_FieldBundle):: FBfrac(ncomps)          ! Fraction data for various components, on their grid
-    type(ESMF_RouteHandle):: RH(ncomps,ncomps,nmappers)  ! Routehandles for pairs of components and different mappers
+    logical               :: comp_present(ncomps)               ! comp present flag
+    logical               :: med_coupling_active(ncomps,ncomps) ! computes the active coupling
+    type(ESMF_State)      :: NStateImp(ncomps)                  ! Import data from various component, on their grid
+    type(ESMF_State)      :: NStateExp(ncomps)                  ! Export data to various component, on their grid
+    type(ESMF_FieldBundle):: FBImp(ncomps,ncomps)               ! Import data from various components interpolated to various grids
+    type(ESMF_FieldBundle):: FBImpAccum(ncomps)                 ! Accumulator for various components import on their grid
+    integer               :: FBImpAccumcnt(ncomps)              ! Accumulator counter for each FBImpAccum
+    type(ESMF_FieldBundle):: FBExp(ncomps)                      ! Export data for various components, on their grid
+    type(ESMF_FieldBundle):: FBExpAccum(ncomps)                 ! Accumulator for various components export on their grid
+    integer               :: FBExpAccumcnt(ncomps)              ! Accumulator counter for each FBExpAccum
+    integer               :: conn_prep_cnt(ncomps)              ! Connector prep count
+    integer               :: conn_post_cnt(ncomps)              ! Connector post count
+    type(ESMF_FieldBundle):: FBfrac(ncomps)                     ! Fraction data for various components, on their grid
+    type(ESMF_RouteHandle):: RH(ncomps,ncomps,nmappers)         ! Routehandles for pairs of components and different mappers
 
-    type(ESMF_RouteHandle):: RH_r2ol_consf ! rof to ocn liquid
-    type(ESMF_RouteHandle):: RH_r2oi_consf ! rof to ocn frozen
-    type(ESMF_FieldBundle):: FBAtmOcn_o  ! Atm/Ocn flux fields on ocn grid
-    type(ESMF_FieldBundle):: FBAtmOcn_a  ! Atm/Ocn flux fields on atm grid
-    type(ESMF_FieldBundle):: FBaccumAtmOcn  ! accumulator of atm export data
+    type(ESMF_RouteHandle):: RH_r2ol_consf                      ! rof to ocn liquid
+    type(ESMF_RouteHandle):: RH_r2oi_consf                      ! rof to ocn frozen
+    type(ESMF_FieldBundle):: FBAtmOcn_o                         ! Atm/Ocn flux fields on ocn grid
+    type(ESMF_FieldBundle):: FBAtmOcn_a                         ! Atm/Ocn flux fields on atm grid
+    type(ESMF_FieldBundle):: FBaccumAtmOcn                      ! accumulator of atm export data
     integer               :: mpicom
   end type
 
@@ -108,4 +108,3 @@ module med_internalstate_mod
   !-----------------------------------------------------------------------------
 
 end module med_internalstate_mod
-
