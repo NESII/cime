@@ -275,7 +275,7 @@ module med_fraction_mod
 
     if (is_local%wrap%comp_present(compocn)) then
       call shr_nuopc_methods_FB_getFldPtr(is_local%wrap%FBfrac(compocn), 'ofrac', dataPtr1, rc=rc)
-      ! if 'ofrac' and 'Si_imask' exist then copy 'So_omask' to 'ofrac'
+      ! if 'ofrac' and 'So_omask' exist then copy 'So_omask' to 'ofrac'
       if (.not. shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) then
         call shr_nuopc_methods_FB_getFldPtr(is_local%wrap%FBImp(compocn,compocn) , 'So_omask' , dataPtr2, rc=rc)
         if (.not. shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) then
@@ -525,7 +525,7 @@ module med_fraction_mod
     !--- write fraction info
     !---------------------------------------
 
-    call shr_nuopc_methods_FB_diagnose(FB, subname//trim(string), rc=rc)
+    call shr_nuopc_methods_FB_diagnose(FB, subname // trim(string) // ' ', rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !---------------------------------------

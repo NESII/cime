@@ -32,7 +32,6 @@ module med_atmocn_mod
   real(r8) , pointer :: lats        (:) ! latitudes  (degrees)
   real(r8) , pointer :: lons        (:) ! longitudes (degrees)
   integer  , pointer :: mask        (:) ! ocn domain mask: 0 <=> inactive cell
-  integer  , pointer :: emask       (:) ! ocn mask on exchange grid decomp
   real(r8) , pointer :: anidr       (:) ! albedo: near infrared, direct
   real(r8) , pointer :: avsdr       (:) ! albedo: visible      , direct
   real(r8) , pointer :: anidf       (:) ! albedo: near infrared, diffuse
@@ -355,7 +354,7 @@ contains
     call shr_nuopc_methods_FB_getFieldN(FBAtmOcn, fieldnum=1, field=lfield, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    ! Determine if first field in either on  grid or a mesh
+    ! Determine if first field is on a grid or a mesh - default will be mesh
     call ESMF_FieldGet(lfield, geomtype=geomtype, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -365,12 +364,17 @@ contains
        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
        call ESMF_MeshGet(lmesh, spatialDim=spatialDim, numOwnedElements=numOwnedElements)
        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+       if (numOwnedElements /= lsize) then
+          call ESMF_LogWrite(trim(subname)//": ERROR numOwnedElements not equal to local size", ESMF_LOGMSG_INFO, rc=rc)
+          rc = ESMF_FAILURE
+          return
+       end if
        allocate(ownedElemCoords(spatialDim*numOwnedElements))
+       allocate(lons(numOwnedElements))
+       allocate(lats(numOwnedElements))
        call ESMF_MeshGet(lmesh, ownedElemCoords=ownedElemCoords)
        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-       allocate(lons(numOwnedElements/spatialDim))
-       allocate(lats(numOwnedElements/spatialDim))
-       do n = 1,numOwnedElements/spatialDim
+       do n = 1,lsize
           lons(n) = ownedElemCoords(2*n-1)
           lats(n) = ownedElemCoords(2*n)
        end do
@@ -412,17 +416,13 @@ contains
     ! could be less that 100% covered in ice.
 
     ! allocate grid mask fields
-    allocate(emask(lsize)); emask(:) =  0.0_r8
-    allocate(mask(lsize)) ; mask(:) =  0.0_r8
-
     ! default compute everywhere, then "turn off" gridcells
-    ! mask(:) = 1
+    allocate(mask(lsize))
+    mask(:) = 1
 
-    ! allocate(rmask(lsize))      ;
-    ! allocate(ifrac(lsize))
-    ! allocate(ofrac(lsize))
-
-    ! ! use domain mask first
+    ! TODO: the following must be uncommented - simply works for aquaplanet
+    ! use domain mask first
+    ! allocate(rmask(lsize))
     ! if (trim(aoflux_grid) == 'ocn') then
     !    ! In this case, FBFrac is the FBFrac_o
     !    call shr_nuopc_methods_FB_getFldPtr(FBFrac , 'ofrac' , rmask, rc=rc)
@@ -431,19 +431,19 @@ contains
     !    rmask(:) = 1._r8
     ! end if
     ! where (rmask(:) < 0.5_r8) mask(:) = 0   ! like nint
+    ! deallocate(rmask)
 
     ! ! then check ofrac + ifrac
+    ! allocate(ifrac(lsize))
+    ! allocate(ofrac(lsize))
     ! call shr_nuopc_methods_FB_getFldPtr(FBFrac , fldname='ofrac' , fldptr1=ofrac, rc=rc)
     ! if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     ! call shr_nuopc_methods_FB_getFldPtr(FBFrac , fldname='ifrac' , fldptr1=ifrac, rc=rc)
     ! if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     ! where (ofrac(:) + ifrac(:) <= 0.0_r8) mask(:) = 0
 
-    ! deallocate(rmask)
     ! deallocate(ifrac)
     ! deallocate(ofrac)
-
-    ! emask(:) = mask(:)
 
     if (dbug_flag > 5) then
       call ESMF_LogWrite(trim(subname)//": done", ESMF_LOGMSG_INFO, rc=dbrc)
@@ -541,10 +541,10 @@ contains
 
     else
 
-       !--- flux_atmocn needs swdn & swup = swdn*(-albedo)
-       !--- swdn & albedos are time-aligned  BEFORE albedos get updated below ---
-       do n=1,lsize
+       ! flux_atmocn needs swdn & swup = swdn*(-albedo)
+       ! swdn & albedos are time-aligned  BEFORE albedos get updated below ---
 
+       do n=1,lsize
           if ( anidr(n) == 1.0_r8 ) then ! dark side of earth
              swup(n) = 0.0_r8
              swdn(n) = 0.0_r8
@@ -557,7 +557,6 @@ contains
 
        ! Solar declination
        ! Will only do albedo calculation if nextsw_cday is not -1.
-
        if (nextsw_cday >= -0.5_r8) then
           call shr_orb_decl(nextsw_cday, eccen, mvelpp,lambm0, obliqr, delta, eccf)
 
@@ -720,7 +719,7 @@ contains
           if (mask(n) /= 0) then
              !--- mask missing atm or ocn data if found
              if (dens(n) < 1.0e-12 .or. tocn(n) < 1.0) then
-                emask(n) = 0
+                mask(n) = 0
                 !write(logunit,*) 'aoflux tcx1',n,dens(n),tocn(n)
              endif
              !!uGust(n) = 1.5_r8*sqrt(uocn(n)**2 + vocn(n)**2) ! there is no wind gust data from ocn
@@ -735,7 +734,7 @@ contains
     if (flux_diurnal) then
        call shr_flux_atmocn_diurnal (lsize , zbot , ubot, vbot, thbot, &
             shum , shum_16O , shum_HDO, shum_18O, dens , tbot, uocn, vocn , &
-            tocn , emask, sen , lat , lwup , &
+            tocn , mask, sen , lat , lwup , &
             roce_16O, roce_HDO, roce_18O,    &
             evap , evap_16O, evap_HDO, evap_18O, taux , tauy, tref, qref , &
             uGust, lwdn , swdn , swup, prec, &
@@ -753,7 +752,7 @@ contains
     else
        call shr_flux_atmocn (lsize , zbot , ubot, vbot, thbot, prec_gust, gust_fac, &
             shum , shum_16O , shum_HDO, shum_18O, dens , tbot, uocn, vocn , &
-            tocn , emask, sen , lat , lwup , &
+            tocn , mask, sen , lat , lwup , &
             roce_16O, roce_HDO, roce_18O,    &
             evap , evap_16O, evap_HDO, evap_18O, taux , tauy, tref, qref , &
             duu10n,ustar, re  , ssq)

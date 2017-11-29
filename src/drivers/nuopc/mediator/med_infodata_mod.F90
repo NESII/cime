@@ -72,9 +72,9 @@ module med_infodata_mod
      logical                 :: glc_coupled_fluxes      ! does glc send fluxes to other components
                                                         ! (only relevant if glc_present is .true.)
      !--- set via components and may be time varying ---
-     logical                 :: atm_aero = .false.             ! atmosphere aerosols
+     logical                 :: atm_aero    = .false.          ! atmosphere aerosols
      real(SHR_KIND_R8)       :: nextsw_cday = -1.0_SHR_KIND_R8 ! calendar of next atm shortwave
-     real(SHR_KIND_R8)       :: precip_fact = 1.0_SHR_KIND_R8  ! precip factor
+     real(SHR_KIND_R8)       :: precip_fact =  1.0_SHR_KIND_R8 ! precip factor
      type(seq_pause_resume_type), pointer :: pause_resume => NULL()
 
      !--- set by driver and may be time varying
@@ -163,10 +163,11 @@ CONTAINS
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     if (itemType == ESMF_STATEITEM_NOTFOUND) then
-      call ESMF_LogWrite(trim(subname)//": "//trim(seq_flds_scalar_name)//" not found", ESMF_LOGMSG_INFO, line=__LINE__, file=u_FILE_u, rc=dbrc)
+       call ESMF_LogWrite(trim(subname)//": "//trim(seq_flds_scalar_name)//" not found", ESMF_LOGMSG_INFO, &
+            line=__LINE__, file=u_FILE_u, rc=dbrc)
     else
       call ESMF_StateGet(State, itemName=trim(seq_flds_scalar_name), field=field, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+      if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return
 
       if (mytask == 0) then

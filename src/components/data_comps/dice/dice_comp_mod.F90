@@ -94,9 +94,9 @@ module dice_comp_mod
   !  real(R8)    , pointer :: ifrac0(:)
 
   !--------------------------------------------------------------------------
-  integer(IN) , parameter :: ktrans = 1
-  character(16),parameter  :: avofld(1:ktrans) = (/"Si_ifrac"/)
-  character(16),parameter  :: avifld(1:ktrans) = (/"ifrac"/)
+  integer(IN)  , parameter :: ktrans = 1
+  character(16), parameter :: avifld(1:ktrans) = (/"ifrac"/)
+  character(16), parameter :: avofld(1:ktrans) = (/"Si_ifrac"/)
   !--------------------------------------------------------------------------
 
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -287,10 +287,15 @@ CONTAINS
     allocate(tfreeze(lsize))
     ! allocate(iFrac0(lsize))
 
+    ! Note that the module array, imask, does not change after initialization
     kfld = mct_aVect_indexRA(ggrid%data,'mask')
     imask(:) = nint(ggrid%data%rAttr(kfld,:))
     kfld = mct_aVect_indexRA(ggrid%data,'lat')
     yc(:) = ggrid%data%rAttr(kfld,:)
+
+    if (km /= 0) then
+       i2x%rAttr(km, n) = imask(n)
+    end if
 
     call t_stopf('dice_initmctavs')
 
@@ -593,9 +598,11 @@ CONTAINS
              !--- salt flux ---
              i2x%rAttr(ksalt ,n) = 0.0_R8
           end if
-
-          !         !--- save ifrac for next timestep
-          !         iFrac0(n) = i2x%rAttr(kiFrac,n)
+          if (km /= 0) then
+             i2x%rAttr(km, n) = imask(n)
+          end if
+          ! !--- save ifrac for next timestep
+          ! iFrac0(n) = i2x%rAttr(kiFrac,n)
        end do
 
     end select

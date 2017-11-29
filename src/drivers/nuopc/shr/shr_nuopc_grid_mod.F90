@@ -5,7 +5,8 @@ module shr_nuopc_grid_mod
   use shr_kind_mod          , only : CL => SHR_KIND_CL, CX => SHR_KIND_CX, CS => SHR_KIND_CS
   use shr_sys_mod           , only : shr_sys_abort
   use shr_string_mod        , only : shr_string_listGetName
-  use shr_nuopc_methods_mod , only : shr_nuopc_methods_State_reset
+  use shr_nuopc_methods_mod , only : shr_nuopc_methods_State_reset, shr_nuopc_methods_ChkErr
+  use shr_nuopc_methods_mod , only : shr_nuopc_methods_Distgrid_Match
   use ESMF
   use NUOPC
 
@@ -19,9 +20,14 @@ module shr_nuopc_grid_mod
   public :: shr_nuopc_grid_MeshInit
   public :: shr_nuopc_grid_ArrayToState
   public :: shr_nuopc_grid_StateToArray
+  public :: shr_nuopc_grid_CreateCoords
+  public :: shr_nuopc_grid_CopyCoord
+  public :: shr_nuopc_grid_CopyItem
 
-  integer :: dbrc
+  integer             :: dbug_flag = 6
+  integer             :: dbrc
   character(len=1024) :: tmpstr
+  character(len=1024) :: msgString
   character(len=*), parameter :: u_FILE_u = &
     __FILE__
 
@@ -697,8 +703,8 @@ contains
 
         call ESMF_LogWrite(trim(subname)//": fldname = "//trim(fldname)//" copy", ESMF_LOGMSG_INFO, rc=dbrc)
         call ESMF_FieldGet(lfield, farrayPtr=farray1, rc=rc)
+        if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return
         do n = 1,lsize
-          if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return
           array(nf,n) = farray1(n)
         enddo
         write(tmpstr,'(a,3g13.6)') trim(subname)//":"//trim(fldname)//"=",minval(farray1),maxval(farray1),sum(farray1)
@@ -713,5 +719,483 @@ contains
     enddo
 
   end subroutine shr_nuopc_grid_StateToArray
+
+  !-----------------------------------------------------------------------------
+
+  subroutine shr_nuopc_grid_CreateCoords(gridNew, gridOld, rc)
+
+    ! ----------------------------------------------
+    type(ESMF_Grid), intent(inout) :: gridNew
+    type(ESMF_Grid), intent(inout) :: gridOld
+    integer        , intent(out)   :: rc
+
+    ! local variables
+    integer                    :: localDE, localDECount
+    type(ESMF_DistGrid)        :: distgrid
+    type(ESMF_CoordSys_Flag)   :: coordSys
+    type(ESMF_Index_Flag)      :: indexflag
+    real(ESMF_KIND_R8),pointer :: dataPtr1(:,:), dataPtr2(:,:)
+    integer                    :: dimCount
+    integer, pointer           :: gridEdgeLWidth(:), gridEdgeUWidth(:)
+    character(len=*),parameter :: subname='(shr_nuopc_methods_grid_createcoords)'
+    ! ----------------------------------------------
+
+    if (dbug_flag > 10) then
+      call ESMF_LogWrite(trim(subname)//": called", ESMF_LOGMSG_INFO, rc=dbrc)
+    endif
+    rc = ESMF_SUCCESS
+
+    call ESMF_LogWrite(trim(subname)//": tcxA", ESMF_LOGMSG_INFO, rc=dbrc)
+
+    call ESMF_GridGet(gridold, dimCount=dimCount, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    allocate(gridEdgeLWidth(dimCount),gridEdgeUWidth(dimCount))
+    call ESMF_GridGet(gridold,distgrid=distgrid, coordSys=coordSys, indexflag=indexflag, dimCount=dimCount, &
+       gridEdgeLWidth=gridEdgeLWidth, gridEdgeUWidth=gridEdgeUWidth, localDECount=localDECount, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    call ESMF_LogWrite(trim(subname)//": tcxB", ESMF_LOGMSG_INFO, rc=dbrc)
+
+    write(msgString,*) trim(subname)//' localDECount = ',localDECount
+    call ESMF_LogWrite(trim(msgString), ESMF_LOGMSG_INFO, rc=dbrc)
+    write(msgString,*) trim(subname)//' dimCount = ',dimCount
+    call ESMF_LogWrite(trim(msgString), ESMF_LOGMSG_INFO, rc=dbrc)
+    write(msgString,*) trim(subname)//' size(gELW) = ',size(gridEdgeLWidth)
+    call ESMF_LogWrite(trim(msgString), ESMF_LOGMSG_INFO, rc=dbrc)
+    write(msgString,*) trim(subname)//' gridEdgeLWidth = ',gridEdgeLWidth
+    call ESMF_LogWrite(trim(msgString), ESMF_LOGMSG_INFO, rc=dbrc)
+    write(msgString,*) trim(subname)//' gridEdgeUWidth = ',gridEdgeUWidth
+    call ESMF_LogWrite(trim(msgString), ESMF_LOGMSG_INFO, rc=dbrc)
+
+    call ESMF_LogWrite(trim(subname)//": tcxC", ESMF_LOGMSG_INFO, rc=dbrc)
+
+    gridnew = ESMF_GridCreate(distgrid=distgrid, coordSys=coordSys, indexflag=indexflag, &
+       gridEdgeLWidth=gridEdgeLWidth, gridEdgeUWidth=gridEdgeUWidth, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    deallocate(gridEdgeLWidth, gridEdgeUWidth)
+
+    call ESMF_GridAddCoord(gridnew, staggerLoc=ESMF_STAGGERLOC_CENTER, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    call ESMF_GridAddCoord(gridnew, staggerLoc=ESMF_STAGGERLOC_CORNER, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    do localDE = 0,localDeCount-1
+
+      call ESMF_GridGetCoord(gridold, coordDim=1, localDE=localDE,  &
+        staggerLoc=ESMF_STAGGERLOC_CENTER, farrayPtr=dataPtr1, rc=rc)
+      if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+      call ESMF_GridGetCoord(gridnew, coordDim=1, localDE=localDE,  &
+        staggerLoc=ESMF_STAGGERLOC_CENTER, farrayPtr=dataPtr2, rc=rc)
+      if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+      dataPtr2 = dataPtr1
+
+      call ESMF_GridGetCoord(gridold, coordDim=2, localDE=localDE,  &
+        staggerLoc=ESMF_STAGGERLOC_CENTER, farrayPtr=dataPtr1, rc=rc)
+      if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+      call ESMF_GridGetCoord(gridnew, coordDim=2, localDE=localDE,  &
+        staggerLoc=ESMF_STAGGERLOC_CENTER, farrayPtr=dataPtr2, rc=rc)
+      if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+      dataPtr2 = dataPtr1
+
+      call ESMF_GridGetCoord(gridold, coordDim=1, localDE=localDE,  &
+        staggerLoc=ESMF_STAGGERLOC_CORNER, farrayPtr=dataPtr1, rc=rc)
+      if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+      call ESMF_GridGetCoord(gridnew, coordDim=1, localDE=localDE,  &
+        staggerLoc=ESMF_STAGGERLOC_CORNER, farrayPtr=dataPtr2, rc=rc)
+      if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+      dataPtr2 = dataPtr1
+
+      call ESMF_GridGetCoord(gridold, coordDim=2, localDE=localDE,  &
+        staggerLoc=ESMF_STAGGERLOC_CORNER, farrayPtr=dataPtr1, rc=rc)
+      if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+      call ESMF_GridGetCoord(gridnew, coordDim=2, localDE=localDE,  &
+        staggerLoc=ESMF_STAGGERLOC_CORNER, farrayPtr=dataPtr2, rc=rc)
+      if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+      dataPtr2 = dataPtr1
+
+    enddo
+
+    if (dbug_flag > 10) then
+      call ESMF_LogWrite(trim(subname)//": done", ESMF_LOGMSG_INFO, rc=dbrc)
+    endif
+
+  end subroutine shr_nuopc_grid_CreateCoords
+
+  !-----------------------------------------------------------------------------
+
+  subroutine shr_nuopc_grid_CopyCoord(gridcomp, gridSrc, gridDst, staggerloc, &
+       tolerance, compare, invert, rc)
+
+    ! Arguments
+    type(ESMF_GridComp) ,  intent(in)           :: gridcomp
+    type(ESMF_Grid),       intent(in)           :: gridSrc
+    type(ESMF_Grid),       intent(in)           :: gridDst
+    type(ESMF_StaggerLoc), intent(in)           :: staggerloc(:)
+    real,                  intent(in), optional :: tolerance
+    logical,               intent(in), optional :: compare
+    integer,               intent(in), optional :: invert(:)
+    integer,               intent(out),optional :: rc
+
+    ! Local Variables
+    real                              :: l_tolerance
+    logical                           :: l_compare
+    integer, allocatable              :: l_invert(:)
+    integer                           :: i
+    type(ESMF_VM)                     :: vm
+    type(ESMF_DistGrid)               :: distGridSrc, distGridDst
+    type(ESMF_Array)                  :: coordArraySrc, coordArrayDst
+    integer(ESMF_KIND_I4),allocatable :: factorList(:)
+    integer, allocatable              :: factorIndexList(:,:)
+    type(ESMF_RouteHandle)            :: routehandle
+    integer                           :: dimCountSrc, dimCountDst
+    integer                           :: deCountDst
+    integer, allocatable              :: elementCountPDeDst(:)
+    integer(ESMF_KIND_I8)             :: sumElementCountPDeDst
+    type(ESMF_TypeKind_Flag)          :: coordTypeKindSrc, coordTypeKindDst
+    type(ESMF_CoordSys_Flag)          :: coordSysSrc, coordSysDst
+    logical                           :: isPresentSrc, isPresentDst
+    integer                           :: dimIndex, staggerlocIndex
+    integer                           :: localPet
+    character(len=10)                 :: numString
+    character(len=*), parameter       :: subname='(shr_nuopc_methods_Grid_CopyCoord)'
+    ! ----------------------------------------------
+
+    if (dbug_flag > 10) then
+      call ESMF_LogWrite(subname//": called", ESMF_LOGMSG_INFO, rc=dbrc)
+    endif
+
+    l_tolerance = 0.0
+    if (present(tolerance)) l_tolerance = tolerance
+    l_compare = .FALSE.
+    if (present(compare)) l_compare = compare
+    if (present(invert)) then
+      allocate(l_invert(size(invert)))
+      l_invert = invert
+    else
+      allocate(l_invert(1))
+      l_invert = -1
+    endif
+
+    call ESMF_GridGet(gridSrc, distGrid=distGridSrc, &
+      dimCount=dimCountSrc, coordTypeKind=coordTypeKindSrc, &
+      coordSys=coordSysSrc, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    call ESMF_GridGet(gridDst, distGrid=distGridDst, &
+      dimCount=dimCountDst, coordTypeKind=coordTypeKindDst, &
+      coordSys=coordSysDst, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    if (.NOT. shr_nuopc_methods_Distgrid_Match(distGrid1=distGridSrc, distGrid2=distGridDst, rc=rc)) then
+      call ESMF_LogSetError(ESMF_RC_ARG_BAD, &
+        msg=subname//": Unable to redistribute coordinates. DistGrids do not match.", &
+        line=__LINE__, file=u_FILE_u, rcToReturn=rc)
+      return  ! bail out
+    endif
+
+    if ( dimCountSrc /= dimCountDst) then
+      call ESMF_LogSetError(ESMF_RC_ARG_BAD, &
+        msg=subname//": DIMCOUNT MISMATCH", &
+        line=__LINE__, file=u_FILE_u, rcToReturn=rc)
+      return  ! bail out
+    endif
+
+    if ( coordTypeKindSrc /= coordTypeKindDst) then
+      call ESMF_LogSetError(ESMF_RC_ARG_BAD, &
+        msg=subname//": COORDTYPEKIND MISMATCH", &
+        line=__LINE__, file=u_FILE_u, rcToReturn=rc)
+      return  ! bail out
+    endif
+
+    if ( coordSysSrc /= coordSysDst) then
+      call ESMF_LogSetError(ESMF_RC_ARG_BAD, &
+        msg=subname//": COORDSYS MISMATCH", &
+        line=__LINE__, file=u_FILE_u, rcToReturn=rc)
+      return  ! bail out
+    endif
+
+    do dimIndex=1, dimCountDst
+    do staggerlocIndex=1, size(staggerloc)
+      call ESMF_GridGetCoord(gridSrc, staggerloc=staggerloc(staggerlocIndex), &
+        isPresent=isPresentSrc, rc=rc)
+      if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+      if(isPresentSrc) then
+        call ESMF_GridGetCoord(gridSrc, coordDim=dimIndex, &
+          staggerloc=staggerloc(staggerlocIndex), &
+          array=coordArraySrc, rc=rc)
+        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+        call ESMF_GridGetCoord(gridDst, &
+          staggerloc=staggerloc(staggerlocIndex), &
+          isPresent=isPresentDst, rc=rc)
+        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+        if(.NOT.isPresentDst) then
+          call ESMF_GridAddCoord(gridDst, &
+            staggerLoc=staggerloc(staggerlocIndex), rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+        else
+          if(l_compare .EQV. .TRUE.) then
+            ! TODO: Compare existing coordinates
+            call ESMF_LogSetError(ESMF_RC_NOT_IMPL, &
+              msg=subname//": Cannot compare existing coordinates.", &
+              line=__LINE__, file=u_FILE_u, rcToReturn=rc)
+              return  ! bail out
+          end if
+        endif
+        call ESMF_GridGetCoord(gridDst, coordDim=dimIndex, &
+          staggerloc=staggerloc(staggerlocIndex), &
+          array=coordArrayDst, rc=rc)
+        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+        call ESMF_ArrayGet(coordArraySrc, distGrid=distGridSrc, rc=rc)
+        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+        call ESMF_ArrayGet(coordArrayDst, distGrid=distGridDst, &
+          dimCount=dimCountDst, deCount=deCountDst, rc=rc)
+        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+        if (.NOT. shr_nuopc_methods_Distgrid_Match(distGrid1=distGridSrc, distGrid2=distGridDst, rc=rc)) then
+        call ESMF_LogSetError(ESMF_RC_ARG_BAD, &
+          msg=subname//": Unable to redistribute coordinates. DistGrids do not match.", &
+          line=__LINE__, file=u_FILE_u, rcToReturn=rc)
+          return  ! bail out
+        endif
+
+        if ( ANY( l_invert == dimIndex )) then
+          call ESMF_GridCompGet(gridcomp, vm=vm, rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          call ESMF_VMGet(vm, localPet=localPet, rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          if (localPet == 0) then
+            call ESMF_DistGridGet(distGridDst, deCount=deCountDst, rc=rc)
+            if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+            allocate(elementCountPDeDst(deCountDst))
+            call ESMF_DistGridGet(distGridDst, &
+              elementCountPDe=elementCountPDeDst, rc=rc)
+            if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+            sumElementCountPDeDst = SUM(elementCountPDeDst)
+            if (dbug_flag >= 2) then
+              write (numString, "(I10)") sumElementCountPDeDst
+              call ESMF_LogWrite(subname//": sumElementCountPDeDst: "//trim(adjustl(numString)), ESMF_LOGMSG_INFO, rc=dbrc)
+            endif
+
+            allocate(factorList(sumElementCountPDeDst))
+            allocate(factorIndexList(2,sumElementCountPDeDst))
+
+            factorList(:) = 1
+            factorIndexList(1,:) = (/(i, i=1, sumElementCountPDeDst, 1)/)
+            factorIndexList(2,:) = (/(i, i=sumElementCountPDeDst, 1, -1)/)
+
+            if (dbug_flag >= 2) then
+              write (numString, "(I10)") factorIndexList(1,1)
+              write (msgString, "(A)") "Src=>Dst: "//trim(adjustl(numString))//"=>"
+              write (numString, "(I10)") factorIndexList(2,1)
+              write (msgString, "(A)") trim(msgString)//trim(adjustl(numString))
+              write (numString, "(I10)") factorIndexList(1,sumElementCountPDeDst)
+              write (msgString, "(A)") trim(msgString)//" "//trim(adjustl(numString))//"=>"
+              write (numString, "(I10)") factorIndexList(2,sumElementCountPDEDst)
+     	      write (msgString, "(A)") trim(msgString)//trim(adjustl(numString))
+              call ESMF_LogWrite(subname//": Invert Mapping: "//msgString, ESMF_LOGMSG_INFO, rc=dbrc)
+            endif
+
+            call ESMF_ArraySMMStore(srcArray=coordArraySrc, dstArray=coordArrayDst, &
+              routehandle=routehandle, factorList=factorList, &
+              factorIndexList=factorIndexList, rc=rc)
+            if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+            deallocate(elementCountPDeDst)
+            deallocate(factorList)
+            deallocate(factorIndexList)
+          else
+            call ESMF_ArraySMMStore(srcArray=coordArraySrc, dstArray=coordArrayDst, &
+              routehandle=routehandle, rc=rc)
+            if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+          endif
+
+          call ESMF_ArraySMM(srcArray=coordArraySrc, dstArray=coordArrayDst, &
+            routehandle=routehandle, rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+          call ESMF_ArraySMMRelease(routehandle=routehandle, rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+        else
+          call ESMF_ArrayRedistStore(coordArraySrc, coordArrayDst, routehandle=routehandle, rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+          call ESMF_ArrayRedist(coordArraySrc, coordArrayDst, routehandle=routehandle, rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+          call ESMF_ArrayRedistRelease(routehandle=routehandle, rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+        endif
+      else
+        call ESMF_LogSetError(ESMF_RC_ARG_BAD, &
+          msg=subname//": SOURCE GRID MISSING STAGGER LOCATION", &
+          line=__LINE__, file=u_FILE_u, rcToReturn=rc)
+        return  ! bail out
+      endif
+    enddo
+    enddo
+
+    deallocate(l_invert)
+
+    if (dbug_flag > 10) then
+      call ESMF_LogWrite(subname//": done", ESMF_LOGMSG_INFO, rc=dbrc)
+    endif
+
+  end subroutine shr_nuopc_grid_CopyCoord
+
+  !-----------------------------------------------------------------------------
+
+  subroutine shr_nuopc_grid_CopyItem(gridcomp, gridSrc, gridDst, item, &
+       tolerance, compare, invert, rc)
+
+    ! ----------------------------------------------
+    type(ESMF_GridComp),      intent(in)           :: gridcomp
+    type(ESMF_Grid),          intent(in)           :: gridSrc
+    type(ESMF_Grid),          intent(in)           :: gridDst
+    type(ESMF_GridItem_Flag), intent(in)           :: item(:)
+    real,                     intent(in), optional :: tolerance
+    logical,                  intent(in), optional :: compare
+    integer,                  intent(in), optional :: invert(:)
+    integer,                  intent(out),optional :: rc
+
+    ! Local Variables
+    real                        :: l_tolerance
+    logical                     :: l_compare
+    integer, allocatable        :: l_invert(:)
+    type(ESMF_StaggerLoc)       :: l_staggerloc
+    type(ESMF_DistGrid)         :: distGridSrc, distGridDst
+    type(ESMF_Array)            :: itemArraySrc, itemArrayDst
+    type(ESMF_RouteHandle)      :: routehandle
+    integer                     :: dimCountSrc, dimCountDst
+    type(ESMF_TypeKind_Flag)    :: coordTypeKindSrc, coordTypeKindDst
+    type(ESMF_CoordSys_Flag)    :: coordSysSrc, coordSysDst
+    logical                     :: isPresentSrc, isPresentDst
+    integer                     :: itemIndex
+    integer                     :: localPet
+    character(len=10)           :: numString
+    character(len=*), parameter :: subname='(shr_nuopc_methods_Grid_CopyItem)'
+    ! ----------------------------------------------
+
+    if (dbug_flag > 10) then
+      call ESMF_LogWrite(subname//": called", ESMF_LOGMSG_INFO, rc=dbrc)
+    endif
+
+    l_tolerance = 0.0
+    if (present(tolerance)) l_tolerance = tolerance
+    l_compare = .FALSE.
+    if (present(compare)) l_compare = compare
+    if (present(invert)) then
+      allocate(l_invert(size(invert)))
+      l_invert = invert
+    else
+      allocate(l_invert(1))
+      l_invert = -1
+    endif
+    l_staggerloc = ESMF_STAGGERLOC_CENTER
+
+    call ESMF_GridGet(gridSrc, distGrid=distGridSrc, &
+      dimCount=dimCountSrc, coordTypeKind=coordTypeKindSrc, &
+      coordSys=coordSysSrc, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    call ESMF_GridGet(gridDst, distGrid=distGridDst, &
+      dimCount=dimCountDst, coordTypeKind=coordTypeKindDst, &
+      coordSys=coordSysDst, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    if (.NOT. shr_nuopc_methods_Distgrid_Match(distGrid1=distGridSrc, distGrid2=distGridDst, rc=rc)) then
+      call ESMF_LogSetError(ESMF_RC_ARG_BAD, &
+        msg=subname//": Unable to redistribute coordinates. DistGrids do not match.", &
+        line=__LINE__, file=u_FILE_u, rcToReturn=rc)
+      return  ! bail out
+    endif
+
+    if ( dimCountSrc /= dimCountDst) then
+      call ESMF_LogSetError(ESMF_RC_ARG_BAD, &
+        msg=subname//": DIMCOUNT MISMATCH", &
+        line=__LINE__, file=u_FILE_u, rcToReturn=rc)
+      return  ! bail out
+    endif
+
+    if ( coordTypeKindSrc /= coordTypeKindDst) then
+      call ESMF_LogSetError(ESMF_RC_ARG_BAD, &
+        msg=subname//": COORDTYPEKIND MISMATCH", &
+        line=__LINE__, file=u_FILE_u, rcToReturn=rc)
+      return  ! bail out
+    endif
+
+    if ( coordSysSrc /= coordSysDst) then
+      call ESMF_LogSetError(ESMF_RC_ARG_BAD, &
+        msg=subname//": COORDSYS MISMATCH", &
+        line=__LINE__, file=u_FILE_u, rcToReturn=rc)
+      return  ! bail out
+    endif
+
+    do itemIndex=1, size(item)
+      call ESMF_GridGetItem(gridSrc, itemflag=item(itemIndex), &
+        staggerloc=l_staggerloc, isPresent=isPresentSrc, rc=rc)
+      if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+      if(isPresentSrc) then
+        call ESMF_GridGetItem(gridSrc, itemflag=item(itemIndex), &
+          staggerloc=l_staggerloc, array=itemArraySrc, rc=rc)
+        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+        call ESMF_GridGetItem(gridDst, itemflag=item(itemIndex), &
+          staggerloc=l_staggerloc, isPresent=isPresentDst, rc=rc)
+        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+        if(.NOT.isPresentDst) then
+          call ESMF_GridAddItem(gridDst, itemflag=item(itemIndex), &
+            staggerLoc=l_staggerloc, rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+        else
+          if(l_compare .EQV. .TRUE.) then
+            ! TODO: Compare existing coordinates
+            call ESMF_LogSetError(ESMF_RC_NOT_IMPL, &
+              msg=subname//": Cannot compare existing coordinates.", &
+              line=__LINE__, file=u_FILE_u, rcToReturn=rc)
+              return  ! bail out
+          end if
+        endif
+        call ESMF_GridGetItem(gridDst, itemflag=item(itemIndex), &
+          staggerloc=l_staggerloc, array=itemArrayDst, rc=rc)
+        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+        call ESMF_ArrayGet(itemArraySrc, distGrid=distGridSrc, rc=rc)
+        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+        call ESMF_ArrayGet(itemArrayDst, distGrid=distGridDst, rc=rc)
+        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+        if (.NOT. shr_nuopc_methods_Distgrid_Match(distGrid1=distGridSrc, distGrid2=distGridDst, rc=rc)) then
+          call ESMF_LogSetError(ESMF_RC_ARG_BAD, &
+            msg=subname//": Unable to redistribute coordinates. DistGrids do not match.", &
+            line=__LINE__, file=u_FILE_u, rcToReturn=rc)
+            return  ! bail out
+        endif
+
+        if ( ANY( l_invert > 0 )) then
+          ! TODO: Invert Item
+            call ESMF_LogSetError(ESMF_RC_NOT_IMPL, &
+              msg=subname//": Cannot invert item.", &
+              line=__LINE__, file=u_FILE_u, rcToReturn=rc)
+              return  ! bail out
+        else
+          call ESMF_ArrayRedistStore(itemArraySrc, itemArrayDst, routehandle=routehandle, rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+          call ESMF_ArrayRedist(itemArraySrc, itemArrayDst, routehandle=routehandle, rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+          call ESMF_ArrayRedistRelease(routehandle=routehandle, rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+        endif
+      else
+        call ESMF_LogSetError(ESMF_RC_ARG_BAD, &
+          msg=subname//": SOURCE GRID MISSING ITEM", &
+          line=__LINE__, file=u_FILE_u, rcToReturn=rc)
+        return  ! bail out
+      endif
+    enddo
+
+    deallocate(l_invert)
+
+    if (dbug_flag > 10) then
+      call ESMF_LogWrite(subname//": done", ESMF_LOGMSG_INFO, rc=dbrc)
+    endif
+
+  end subroutine shr_nuopc_grid_CopyItem
 
 end module shr_nuopc_grid_mod

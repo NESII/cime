@@ -116,6 +116,7 @@ module ESM
   integer, parameter      :: dbug_flag = 10
   character(len=512)      :: msgstr
   integer                 :: dbrc
+  logical                 :: mastertask
   character(*), parameter :: runseq_filename = "cesm.runconfig"
   character(*), parameter :: u_FILE_u = __FILE__
 
@@ -202,6 +203,8 @@ module ESM
     character(len=8)            :: glc_present, med_present
     integer                     :: componentCount
     type(NUOPC_FreeFormat)      :: attrFF
+    type(ESMF_VM)               :: vm
+    integer                     :: localPet
     character(len=*), parameter :: subname = "(esm.F90:SetModelServices)"
     !-------------------------------------------
 
@@ -217,6 +220,14 @@ module ESM
     call ESMF_GridCompGet(driver, config=config, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    call ESMF_GridCompGet(driver, vm=vm, rc=rc)
+    call ESMF_VMGet(vm, localPet=localPet, rc=rc)
+    if (localPet == 0) then
+       mastertask=.true.
+    else
+       mastertask = .false.
+    end if
+
     ! determine the generic component labels
     componentCount = ESMF_ConfigGetLen(config,label="CESM_component_list:", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -229,13 +240,16 @@ module ESM
     allocate(compLabels(componentCount), stat=stat)
     if (ESMF_LogFoundAllocError(statusToCheck=stat, msg="Allocation of compLabels failed.", &
           line=__LINE__, file=u_FILE_u, rcToReturn=rc)) return
-    call ESMF_ConfigGetAttribute(config, valueList=compLabels, label="CESM_component_list:", count=componentCount, rc=rc)
+    call ESMF_ConfigGetAttribute(config, valueList=compLabels, label="CESM_component_list:", &
+         count=componentCount, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     attrFF = NUOPC_FreeFormatCreate(config, label="DRIVER_attributes::", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call NUOPC_FreeFormatPrint(attrFF, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    if (mastertask) then
+       call NUOPC_FreeFormatPrint(attrFF, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
     call NUOPC_CompAttributeIngest(driver, attrFF, addFlag=.true., rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     call NUOPC_FreeFormatDestroy(attrFF, rc=rc)
@@ -243,8 +257,10 @@ module ESM
 
     attrFF = NUOPC_FreeFormatCreate(config, label="DRIVER_info_attributes::", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call NUOPC_FreeFormatPrint(attrFF, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    if (mastertask) then
+       call NUOPC_FreeFormatPrint(attrFF, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
     call NUOPC_CompAttributeIngest(driver, attrFF, addFlag=.true., rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     call NUOPC_FreeFormatDestroy(attrFF, rc=rc)
@@ -252,8 +268,10 @@ module ESM
 
     attrFF = NUOPC_FreeFormatCreate(config, label="DRIVER_maps_attributes::", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call NUOPC_FreeFormatPrint(attrFF, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    if (mastertask) then
+       call NUOPC_FreeFormatPrint(attrFF, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
     call NUOPC_CompAttributeIngest(driver, attrFF, addFlag=.true., rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     call NUOPC_FreeFormatDestroy(attrFF, rc=rc)
@@ -261,8 +279,10 @@ module ESM
 
     attrFF = NUOPC_FreeFormatCreate(config, label="DRIVER_auxhist_attributes::", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call NUOPC_FreeFormatPrint(attrFF, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    if (mastertask) then
+       call NUOPC_FreeFormatPrint(attrFF, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
     call NUOPC_CompAttributeIngest(driver, attrFF, addFlag=.true., rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     call NUOPC_FreeFormatDestroy(attrFF, rc=rc)
@@ -1075,6 +1095,9 @@ module ESM
     type(ESMF_Clock)              :: internalClock
     type(ESMF_Config)             :: config
     type(NUOPC_FreeFormat)        :: runSeqFF
+    !DEBUG
+    type(ESMF_CplComp) :: connector
+    !DEBUG
     character(len=*), parameter :: subname = "(esm.F90:SetRunSequence)"
 
     rc = ESMF_SUCCESS
@@ -1093,11 +1116,18 @@ module ESM
     runSeqFF = NUOPC_FreeFormatCreate(config, label="runSeq::", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    call NUOPC_FreeFormatPrint(runSeqFF, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    if (mastertask) then
+       call NUOPC_FreeFormatPrint(runSeqFF, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
 
     call NUOPC_DriverIngestRunSequence(driver, runSeqFF, autoAddConnectors=.true., rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    !DEBUG
+    call NUOPC_DriverGetComp(driver, srcCompLabel="ATM", dstCompLabel="MED", comp=connector, rc=rc)
+    call NUOPC_CompAttributeSet(connector, name="Verbosity", value="high", rc=rc)
+    !DEBUG
 
     call NUOPC_FreeFormatDestroy(runSeqFF, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return

@@ -11,7 +11,7 @@ program esmApp
 
   integer                 :: rc, urc
   type(ESMF_GridComp)     :: esmComp
-  
+
   ! Initialize ESMF
   call ESMF_Initialize(logkindflag=ESMF_LOGKIND_MULTI, logappendflag=.false., &
     defaultCalkind=ESMF_CALKIND_GREGORIAN, ioUnitLBound=5001, ioUnitUBound=5101, rc=rc)
@@ -34,7 +34,7 @@ program esmApp
     line=__LINE__, &
     file=__FILE__)) &
     call ESMF_Finalize(endflag=ESMF_END_ABORT)
-    
+
   ! SetServices for the earth system Component
   call ESMF_GridCompSetServices(esmComp, esmSS, userRc=urc, rc=rc)
   if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
@@ -45,7 +45,7 @@ program esmApp
     line=__LINE__, &
     file=__FILE__)) &
     call ESMF_Finalize(endflag=ESMF_END_ABORT)
-    
+
   ! Call Initialize for the earth system Component
   call ESMF_GridCompInitialize(esmComp, userRc=urc, rc=rc)
   if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
@@ -56,7 +56,7 @@ program esmApp
     line=__LINE__, &
     file=__FILE__)) &
     call ESMF_Finalize(endflag=ESMF_END_ABORT)
-  
+
   ! Call Run  for earth the system Component
   call ESMF_GridCompRun(esmComp, userRc=urc, rc=rc)
   if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
@@ -67,7 +67,7 @@ program esmApp
     line=__LINE__, &
     file=__FILE__)) &
     call ESMF_Finalize(endflag=ESMF_END_ABORT)
-  
+
   ! Call Finalize for the earth system Component
   call ESMF_GridCompFinalize(esmComp, userRc=urc, rc=rc)
   if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
@@ -78,14 +78,16 @@ program esmApp
     line=__LINE__, &
     file=__FILE__)) &
     call ESMF_Finalize(endflag=ESMF_END_ABORT)
-    
+
   ! Destroy the earth system Component
+  call ESMF_LogWrite("ESMF_GridCompDestroy called", ESMF_LOGMSG_INFO, rc=rc)
   call ESMF_GridCompDestroy(esmComp, rc=rc)
   if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
     line=__LINE__, &
     file=__FILE__)) &
     call ESMF_Finalize(endflag=ESMF_END_ABORT)
-  
+  call ESMF_LogWrite("ESMF_GridCompDestroy finished", ESMF_LOGMSG_INFO, rc=rc)
+
   call ESMF_LogWrite("esmApp FINISHED", ESMF_LOGMSG_INFO, rc=rc)
   if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
     line=__LINE__, &
@@ -94,5 +96,5 @@ program esmApp
 
   ! Finalize ESMF
   call ESMF_Finalize()
-  
-end program  
+
+end program

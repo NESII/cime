@@ -72,9 +72,11 @@ module docn_comp_mod
   !--------------------------------------------------------------------------
   integer(IN)     , parameter :: ktrans = 8
   character(12)   , parameter :: avifld(1:ktrans) = &
-       (/ "t           ","u           ","v           ","dhdx        ","dhdy        ","s           ","h           ","qbot        "/)
+       (/ "t           ","u           ","v           ","dhdx        ",&
+          "dhdy        ","s           ","h           ","qbot        "/)
   character(12)   , parameter  :: avofld(1:ktrans) = &
-       (/ "So_t        ","So_u        ","So_v        ","So_dhdx     ","So_dhdy     ","So_s        ","strm_h      ","strm_qbot   "/)
+       (/ "So_t        ","So_u        ","So_v        ","So_dhdx     ",&
+          "So_dhdy     ","So_s        ","strm_h      ","strm_qbot   "/)
   character(len=*), parameter :: flds_strm = 'strm_h:strm_qbot'
   !--------------------------------------------------------------------------
 
@@ -166,7 +168,12 @@ CONTAINS
        call shr_strdata_init(SDOCN,mpicom,compid,name='ocn', &
             scmmode=scmmode,scmlon=scmlon,scmlat=scmlat, calendar=calendar)
     else
-       call shr_strdata_init(SDOCN,mpicom,compid,name='ocn', calendar=calendar)
+       if (datamode == 'SST_AQUAPANAL' .or. datamode == 'SST_AQUAPFILE' .or. datamode == 'SOM_AQUAP') then
+          ! Special logic for either prescribed or som aquaplanet - overwrite and
+          call shr_strdata_init(SDOCN,mpicom,compid,name='ocn', calendar=calendar, reset_domain_mask=.true.)
+       else
+          call shr_strdata_init(SDOCN,mpicom,compid,name='ocn', calendar=calendar)
+       end if
     endif
 
     if (my_task == master_task) then
@@ -202,19 +209,6 @@ CONTAINS
     call shr_sys_flush(logunit)
 
     call shr_dmodel_rearrGGrid(SDOCN%grid, ggrid, gsmap, rearr, mpicom)
-
-    ! Special logic for either prescribed or som aquaplanet - overwrite and
-    ! set mask/frac to 1
-    if (datamode == 'SST_AQUAPANAL' .or. datamode == 'SST_AQUAPFILE' .or. datamode == 'SOM_AQUAP') then
-       kmask = mct_aVect_indexRA(ggrid%data,'mask')
-       ggrid%data%rattr(kmask,:) = 1
-
-       kfrac = mct_aVect_indexRA(ggrid%data,'frac')
-       ggrid%data%rattr(kfrac,:) = 1.0_r8
-
-       write(logunit,F00) ' Resetting the data ocean mask and frac to 1 for aquaplanet'
-    end if
-
     call t_stopf('docn_initmctdom')
 
     !----------------------------------------------------------------------------
@@ -285,8 +279,15 @@ CONTAINS
     allocate(xc(lsize))
     allocate(yc(lsize))
 
+    ! Note that the module array, imask, does not change after initialization
     kmask = mct_aVect_indexRA(ggrid%data,'mask')
     imask(:) = nint(ggrid%data%rAttr(kmask,:))
+
+    if (km /= 0) then
+       do n = 1,lsize
+          o2x%rAttr(km, n) = imask(n)
+       end do
+    end if
 
     index_lon = mct_aVect_indexRA(ggrid%data,'lon')
     xc(:) = ggrid%data%rAttr(index_lon,:)
@@ -428,7 +429,7 @@ CONTAINS
     lsize = mct_avect_lsize(o2x)
     do n = 1,lsize
        if (km /= 0) then
-          o2x%rAttr(km   ,n) = imask(n)
+          o2x%rAttr(km, n) = imask(n)
        end if
        o2x%rAttr(kt   ,n) = TkFrz
        o2x%rAttr(ks   ,n) = ocnsalt
@@ -480,12 +481,18 @@ CONTAINS
 
     case('SST_AQUAPANAL')
        lsize = mct_avect_lsize(o2x)
+       ! Zero out the attribute vector before calling the prescribed_sst
+       ! function - so this also zeroes out the So_omask if it is needed
+       ! so need to re-introduce it
        do n = 1,lsize
           o2x%rAttr(:,n) = 0.0_r8
        end do
        call prescribed_sst(xc, yc, lsize, aquap_option, o2x%rAttr(kt,:))
        do n = 1,lsize
           o2x%rAttr(kt,n) = o2x%rAttr(kt,n) + TkFrz
+          if (km /= 0) then
+             o2x%rAttr(km, n) = imask(n)
+          end if
        enddo
 
     case('SST_AQUAPFILE')

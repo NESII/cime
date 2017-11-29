@@ -69,9 +69,12 @@ module seq_flux_mct
 
   real(r8), allocatable :: fswpen (:) ! fraction of sw penetrating ocn surface layer
   real(r8), allocatable :: ocnsal (:) ! ocean salinity
+  real(r8), allocatable :: uGust  (:) ! wind gust
   real(r8), allocatable :: lwdn   (:) ! long  wave, downward
   real(r8), allocatable :: swdn   (:) ! short wave, downward
   real(r8), allocatable :: swup   (:) ! short wave, upward
+  real(r8), allocatable :: prec   (:) ! precip
+  real(r8), allocatable :: prec_gust (:) ! atm precip for convective gustiness (kg/m^3)
 
   ! Diurnal cycle variables wrt flux
 
@@ -98,12 +101,6 @@ module seq_flux_mct
   real(r8), allocatable ::  ustar(:)  ! saved ustar
   real(r8), allocatable ::  re   (:)  ! saved re
   real(r8), allocatable ::  ssq  (:)  ! saved sq
-
-  ! Fields that are not obtained via GetFldPtr
-
-  real(r8), allocatable :: uGust  (:) ! wind gust
-  real(r8), allocatable :: prec   (:) ! precip
-  real(r8), allocatable :: prec_gust (:) ! atm precip for convective gustiness (kg/m^3)
 
   ! Conversion from degrees to radians
 
@@ -810,14 +807,18 @@ contains
 
        call seq_infodata_GetData(infodata,nextsw_cday=nextsw_cday,orb_eccen=eccen, &
           orb_mvelpp=mvelpp, orb_lambm0=lambm0, orb_obliqr=obliqr)
+       write(6,*)'DEBUG_OCNALB: nextsw_cday= ',nextsw_cday
        if (nextsw_cday >= -0.5_r8) then
           calday = nextsw_cday
           call shr_orb_decl(calday, eccen, mvelpp,lambm0, obliqr, delta, eccf)
           ! Compute albedos
           do n=1,nloc_o
              rlat = const_deg2rad * lats(n)
+             write(6,*)'DEBUG_OCNALB: n,rlat= ',n,lats(n)
              rlon = const_deg2rad * lons(n)
+             write(6,*)'DEBUG_OCNALB: n,rlon= ',n,lons(n)
              cosz = shr_orb_cosz( calday, rlat, rlon, delta )
+             write(6,*)'DEBUG_OCNALB: n,cosz= ',n,cosz
              if (cosz  >  0.0_r8) then !--- sun hit --
                 anidr = (.026_r8/(cosz**1.7_r8 + 0.065_r8)) +   &
                         (.150_r8*(cosz         - 0.100_r8 ) *   &
@@ -1446,6 +1447,11 @@ contains
                           !duu10n,ustar, re  , ssq, missval = 0.0_r8 )
                           cold_start=cold_start)
     else
+       do n = 1,nloc
+          write(6,*)'DEBUG: n,zbot= ',n,zbot(n)
+          write(6,*)'DEBUG: n,ubot= ',n,ubot(n)
+          write(6,*)'DEBUG: n,thbot= ',n,thbot(n)
+       end do
        call shr_flux_atmocn (nloc , zbot , ubot, vbot, thbot, prec_gust, gust_fac, &
                           shum , shum_16O , shum_HDO, shum_18O, dens , tbot, uocn, vocn , &
                           tocn , emask, sen , lat , lwup , &
@@ -1455,6 +1461,12 @@ contains
                           !missval should not be needed if flux calc
                           !consistent with mrgx2a fraction
                           !duu10n,ustar, re  , ssq, missval = 0.0_r8 )
+       do n = 1,nloc
+          write(6,*)'DEBUG: n,taux= ',n,taux(n)
+          write(6,*)'DEBUG: n,tauy= ',n,tauy(n)
+          write(6,*)'DEBUG: n,sen= ',n,sen(n)
+          write(6,*)'DEBUG: n,lat= ',n,lat(n)
+       end do
     endif
 
     do n = 1,nloc

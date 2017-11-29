@@ -2,7 +2,7 @@ module med_merge_mod
 
   !-----------------------------------------------------------------------------
   ! Mediator Component.
-  ! This mediator operates on two timescales and keeps two internal Clocks to 
+  ! This mediator operates on two timescales and keeps two internal Clocks to
   ! do so.
   !-----------------------------------------------------------------------------
 
@@ -12,9 +12,9 @@ module med_merge_mod
   use med_constants_mod
 
   implicit none
-  
+
   private
-  
+
   integer            :: dbrc
   integer           , parameter :: dbug_flag   = med_constants_dbug_flag
   logical           , parameter :: statewrite_flag = med_constants_statewrite_flag
@@ -31,11 +31,16 @@ module med_merge_mod
   contains
   !-----------------------------------------------------------------------------
 
-  subroutine med_merge_auto(FBout, FB1, FB1w, fldw1, FB2, FB2w, fldw2, &
-                                   FB3, FB3w, fldw3, FB4, FB4w, fldw4, &
-                                   FB5, FB5w, fldw5, FB6, FB6w, fldw6, &
-                                   document, string, rc)
-    type(ESMF_FieldBundle),intent(inout) :: FBout
+    subroutine med_merge_auto(FBout, &
+                              FB1, FB1w, fldw1, &
+                              FB2, FB2w, fldw2, &
+                              FB3, FB3w, fldw3, &
+                              FB4, FB4w, fldw4, &
+                              FB5, FB5w, fldw5, &
+                              FB6, FB6w, fldw6, &
+                              document, string, rc)
+
+    type(ESMF_FieldBundle),intent(inout)       :: FBout
     type(ESMF_FieldBundle),intent(in),optional :: FB1  , FB2  , FB3  , FB4  , FB5  , FB6
     type(ESMF_FieldBundle),intent(in),optional :: FB1w , FB2w , FB3w , FB4w , FB5w , FB6w
     character(len=*)      ,intent(in),optional :: fldw1, fldw2, fldw3, fldw4, fldw5, fldw6
@@ -44,13 +49,13 @@ module med_merge_mod
     integer               ,intent(out)         :: rc
 
     ! This subroutine initializes the fractions
-    
+
     ! local variables
     integer                     :: cnt, n
     logical                     :: ldocument
     character(len=128)          :: lstring
     character(len=*),parameter  :: subname='(med_merge_auto)'
-    
+
     if (dbug_flag > 5) then
       call ESMF_LogWrite(trim(subname)//": called", ESMF_LOGMSG_INFO, rc=dbrc)
     endif
@@ -225,14 +230,14 @@ module med_merge_mod
     logical               ,intent(in),optional :: document
     character(len=*)      ,intent(in),optional :: string
     integer               ,intent(out)         :: rc
-    
+
     ! This subroutine merges fields from FB into the nth field of FBout.
     ! If FBw and fldw are present, the the FB field is weighted (multiplied) by that field.
     ! document and string are optional arguments related to diagnostics.
 
     ! A field is expected to have a naming convention like "char1"_"char2"
-    ! where the char1 before the underscore is the prefix indicative of State or Flux 
-    ! and the component associated with the field and char2 is the field name. 
+    ! where the char1 before the underscore is the prefix indicative of State or Flux
+    ! and the component associated with the field and char2 is the field name.
     ! Some examples are So_t, Sx_t, Fioi_taux, Faxx_taux.
     ! S is a state, F is a flux.  An x in the prefix indicates it should be merged.
     ! If there is no x in the prefix, then it's a field that is filled via copy.
@@ -243,7 +248,7 @@ module med_merge_mod
     ! - The field is merged with weighting (if it exists) if
     !   - there is an "x" in the FBout prefix
     !   - the fieldname (char2) in FB matches the fieldname in FBout
-    !   - if the FBout prefix has an F, then either FBpre has an x in it or there is 
+    !   - if the FBout prefix has an F, then either FBpre has an x in it or there is
     !     another character, not x, that matches between the FBout prefix and the FB prefix.
 
     ! Some examples
@@ -256,12 +261,12 @@ module med_merge_mod
     !  FBout = Foxx_salt, FB=Fioi_salt, merged ("o" matches in Foxx, Fioi)
     !  FBout = Fioi_salt, FB=Faii_salt, skipped (no "x" in Fioi)
     !  FBout = Foxx_salt, FB=Faii_salt, skipped ("o" in Foxx is not present in Faii)
-    
+
     ! local variables
     real(ESMF_KIND_R8), pointer :: dp1 (:), dp2 (:,:)
     real(ESMF_KIND_R8), pointer :: dpf1(:), dpf2 (:,:)
     real(ESMF_KIND_R8), pointer :: dpw1(:), dpw2(:,:)
-    
+
     integer                     :: nf, n1, n2
     integer                     :: cnt, cntf
     character(ESMF_MAXSTR)      :: FBoutfld, FBoutpre, FBoutname, FBfld, FBname, FBpre
@@ -373,4 +378,3 @@ module med_merge_mod
   !-----------------------------------------------------------------------------
 
 end module med_merge_mod
-

@@ -40,6 +40,8 @@ module MED
   use shr_nuopc_methods_mod , only: shr_nuopc_methods_State_getNumFields
   use shr_nuopc_methods_mod , only: shr_nuopc_methods_ChkErr
   use shr_nuopc_methods_mod , only: shr_nuopc_methods_clock_timeprint
+  use shr_nuopc_methods_mod , only: shr_nuopc_methods_State_GetScalar !DEBUG
+  use shr_nuopc_methods_mod , only: shr_nuopc_methods_State_Diagnose  !DEBUG
 
   use med_infodata_mod      , only: med_infodata_CopyStateToInfodata, infodata=>med_infodata
 
@@ -1085,12 +1087,14 @@ module MED
                 ! redistribute the arbSeqIndexList. Here simply keep the DEs of the
                 ! provider Grid.
                 if (dbug_flag > 1) then
-                  call ESMF_LogWrite(trim(subname)//trim(string)//": accept arb2arb grid for "//trim(fieldNameList(n)), ESMF_LOGMSG_INFO, rc=dbrc)
+                   call ESMF_LogWrite(trim(subname)//trim(string)//": accept arb2arb grid for "//trim(fieldNameList(n)), &
+                        ESMF_LOGMSG_INFO, rc=dbrc)
                 endif
 
               else   ! grid_arbopt
 
-                call ESMF_LogWrite(trim(subname)//trim(string)//": ERROR grid_arbopt setting = "//trim(grid_arbopt), ESMF_LOGMSG_INFO, rc=rc)
+                 call ESMF_LogWrite(trim(subname)//trim(string)//": ERROR grid_arbopt setting = "//trim(grid_arbopt), &
+                      ESMF_LOGMSG_INFO, rc=rc)
                 rc = ESMF_FAILURE
                 if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -1103,7 +1107,8 @@ module MED
 
               ! access localDeCount to show this is a real Grid
               if (dbug_flag > 1) then
-                call ESMF_LogWrite(trim(subname)//trim(string)//": accept reg2reg grid for "//trim(fieldNameList(n)), ESMF_LOGMSG_INFO, rc=dbrc)
+                 call ESMF_LogWrite(trim(subname)//trim(string)//": accept reg2reg grid for "//trim(fieldNameList(n)), &
+                      ESMF_LOGMSG_INFO, rc=dbrc)
               endif
 
               call ESMF_FieldGet(field, grid=grid, rc=rc)
@@ -1151,7 +1156,8 @@ module MED
 
               do i2 = 1,tileCount
               do i1 = 1,dimCount
-                write(msgString,'(A,5i8)') trim(subname)//':PTile =',i2,i1,minIndexPTile(i1,i2),maxIndexPTile(i1,i2),regDecompPTile(i1,i2)
+                 write(msgString,'(A,5i8)') trim(subname)//':PTile =',i2,i1,minIndexPTile(i1,i2),&
+                      maxIndexPTile(i1,i2),regDecompPTile(i1,i2)
                 call ESMF_LogWrite(trim(msgString), ESMF_LOGMSG_INFO, rc=dbrc)
               enddo
               enddo
@@ -1308,6 +1314,7 @@ module MED
       if (ESMF_StateIsCreated(is_local%wrap%NStateImp(n1),rc=rc)) then
         call completeFieldInitialization(is_local%wrap%NStateImp(n1), rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
         call shr_nuopc_methods_State_reset(is_local%wrap%NStateImp(n1), value=spval_init, rc=rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
       endif
@@ -1407,9 +1414,11 @@ module MED
     character(len=128)          :: value, rhname, rhname_file
     integer                     :: SrcMaskValue, DstMaskValue
     integer                     :: n
-    logical                     :: first_call = .true.
     logical                     :: atm_prognostic
     logical                     :: ocn_prognostic
+    logical                     :: first_call = .true.
+    logical                     :: compute_atmocn_albedo = .true.
+    real(ESMF_KIND_R8)          :: nextsw_cday
     character(len=*), parameter :: subname='(module_MEDIATOR:DataInitialize)'
     !-----------------------------------------------------------
 
@@ -1437,6 +1446,11 @@ module MED
     ! check that all imported fields from ATM show correct timestamp
     !TODO: need to loop through fields from all of the components from which
     !TODO: valid field data is expected at this time!!
+
+    !DEBUG
+    call shr_nuopc_methods_State_diagnose(is_local%wrap%NStateImp(compatm),subname//':ISatm',rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
+    !DEBUG
 
     if (first_call) then
 
@@ -1548,6 +1562,7 @@ module MED
             ESMF_StateIsCreated(is_local%wrap%NStateExp(n1),rc=rc)) then
 
           if (mastertask) write(llogunit,*) subname,' initializing FBs for '//trim(compname(n1))
+
           call shr_nuopc_methods_FB_init(is_local%wrap%FBImp(n1,n1), STgeom=is_local%wrap%NStateImp(n1), &
             STflds=is_local%wrap%NStateImp(n1), name='FBImp'//trim(compname(n1)), rc=rc)
           if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -1559,6 +1574,7 @@ module MED
           call shr_nuopc_methods_FB_init(is_local%wrap%FBImpAccum(n1), STgeom=is_local%wrap%NStateImp(n1), &
             STflds=is_local%wrap%NStateImp(n1), name='FBImpAccum'//trim(compname(n1)), rc=rc)
           if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
           call shr_nuopc_methods_FB_init(is_local%wrap%FBExpAccum(n1), STgeom=is_local%wrap%NStateExp(n1), &
             STflds=is_local%wrap%NStateExp(n1), name='FBExpAccum'//trim(compname(n1)), rc=rc)
           if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -1567,6 +1583,7 @@ module MED
           call shr_nuopc_methods_FB_init(is_local%wrap%FBfrac(n1), STgeom=is_local%wrap%NStateExp(n1), &
             fieldNameList=fraclist(:,n1), name='FBfrac'//trim(compname(n1)), rc=rc)
           if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
         endif
       enddo
       if (mastertask) call shr_sys_flush(llogunit)
@@ -1728,7 +1745,8 @@ module MED
         is_local%wrap%FBExpAccumCnt(n1) = 0
         if (is_local%wrap%comp_present(n1) .and. &
             ESMF_StateIsCreated(is_local%wrap%NStateImp(n1),rc=rc)) then
-          call med_infodata_CopyStateToInfodata(is_local%wrap%NStateImp(n1),infodata,trim(compname(n1))//'2cpli',is_local%wrap%mpicom,rc)
+           call med_infodata_CopyStateToInfodata(is_local%wrap%NStateImp(n1), infodata, trim(compname(n1))//'2cpli', &
+                is_local%wrap%mpicom, rc)
           if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
           call shr_nuopc_methods_FB_reset(is_local%wrap%FBImpAccum(n1), value=czero, rc=rc)
           if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -1769,8 +1787,56 @@ module MED
 
       endif
 #endif
-      first_call = .false.
-    endif
+    endif  ! end first_call if-block
+
+    ! Reset first_call
+    first_call = .false.
+
+    !---------------------------------------
+    ! Initialize that atm/ocn flux calculation and ocean albedo calculation as
+    ! long as a valid value of nextsw_cday is passed from the atmosphere
+    !---------------------------------------
+
+    ! Check if the atm/ocn init should be done
+    ! This is the case if there is either a prognostic ocean or a prognostic atmosphere - (both are fine as well)
+    ! Note that xxx_prognostic flag will be .true. if fields are expected to be sent from the mediator to the compnent
+
+    if (is_local%wrap%med_coupling_active(compocn,compatm) .and. &
+        is_local%wrap%med_coupling_active(compatm,compocn)) then
+
+       if (compute_atmocn_albedo) then
+          call shr_nuopc_methods_State_GetScalar(State=is_local%wrap%NStateImp(compatm), &
+               scalar_id=seq_flds_scalar_index_nextsw_cday, value=nextsw_cday, mpicom=is_local%wrap%mpicom, rc=rc)
+
+          if (nextsw_cday == 0._ESMF_KIND_R8) then
+
+             call ESMF_LogWrite("MED - nextsw_cday is zero", ESMF_LOGMSG_INFO, rc=rc)
+             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+             call ESMF_LogWrite("MED - Initialize-Data-Dependency(1) from ATM NOT YET SATISFIED!!!", ESMF_LOGMSG_INFO, rc=rc)
+             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+             RETURN
+
+          else
+
+             call ESMF_LogWrite("MED - initialize atm/ocn fluxes and compute ocean albedo", ESMF_LOGMSG_INFO, rc=rc)
+             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             ! Initialize atm/ocn fluxes and ocean albedo
+             call med_phases_atmocn_init(gcomp, rc=rc)
+             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             ! Compute ocean albedoes
+             ! This will update the relevant module arrays in med_atmocn_mod.F90
+             ! since they are simply pointers into the FBAtmOcn, FBAtm and FBOcn field bundles
+             call med_phases_atmocn_ocnalb(gcomp, rc=rc)
+             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             compute_atmocn_albedo = .false.
+
+          end if
+       end if
+
+    end if
 
     !---------------------------------------
     ! Finish atm initialization if needed
@@ -1787,17 +1853,20 @@ module MED
           if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
           if (connected) then
+             ! Determine if atm import fields are time stamped correctly
              call ESMF_StateGet(is_local%wrap%NStateImp(compatm), itemName=fldsFr(compatm)%shortname(n), field=field, rc=rc)
              if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
              atCorrectTime = NUOPC_IsAtTime(field, time, rc=rc)
              if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
-             if (.not.atCorrectTime) then
+             if (.not. atCorrectTime) then
+                ! If any atm import fields are not time stamped correctly, then dependency is not satisified - must return to atm
                 call ESMF_LogWrite("MED - Initialize-Data-Dependency from ATM NOT YET SATISFIED!!!", ESMF_LOGMSG_INFO, rc=rc)
                 if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
-                call ESMF_LogWrite("MED - Initialize-Data-Dependency Field is " // trim(fldsFr(compatm)%shortname(n)), ESMF_LOGMSG_INFO, rc=rc)
+                call ESMF_LogWrite("MED - Initialize-Data-Dependency Field is " // trim(fldsFr(compatm)%shortname(n)), &
+                     ESMF_LOGMSG_INFO, rc=rc)
                 if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
                 allDone = .false.
@@ -1809,7 +1878,9 @@ module MED
 
     ! TODO: Add a new logical that says that need to do data dependency from atm - and only execute the following block
     ! if there is a data dependency from the atm
+
     if (.not. allDone) then
+
        ! Do the merge to the atmospheric component
        call med_phases_prep_atm(gcomp, rc=rc)
        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -1830,70 +1901,13 @@ module MED
        ! Connectors will be automatically called between the mediator and atm until allDone is true
        call ESMF_LogWrite("MED - Initialize-Data-Dependency Sending Data to ATM", ESMF_LOGMSG_INFO, rc=rc)
        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
     else
+
        ! Copy the NstateImp(compatm) to FBImp(compatm)
        call med_connectors_post_atm2med(gcomp, rc=rc)
        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    end if
 
-    if (allDone) then
-
-       !---------------------------------------
-       ! Initialize that atm/ocn flux calculation and ocean albedo calculation
-       !---------------------------------------
-
-       ! Check if the atm/ocn init should be done
-       ! This is the case if there is either a prognostic ocean or a prognostic atmosphere - (both are fine as well)
-       ! Note that xxx_prognostic flag will be .true. if fields are expected to be sent from the mediator to the compnent
-
-       atm_prognostic = .false.
-       if (is_local%wrap%med_coupling_active(compocn,compatm)) then
-          do n = 1,fldsTo(compatm)%num
-             call ESMF_StateGet(is_local%wrap%NStateExp(compatm), itemName=fldsTo(compatm)%shortname(n), &
-                  itemType=itemType, rc=rc)
-             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-             if (itemType /= ESMF_STATEITEM_NOTFOUND) then
-                connected = NUOPC_IsConnected(is_local%wrap%NStateExp(compatm), fieldName=fldsTo(compatm)%shortname(n), rc=rc)
-                if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-                if (connected) then
-                   exit  ! break out of the loop when first connected is found
-                end if
-             end if
-          end do
-          if (connected) then
-             atm_prognostic = .true.
-          end if
-       end if
-
-       ocn_prognostic = .false.
-       if (is_local%wrap%med_coupling_active(compatm,compocn)) then
-          do n = 1,fldsTo(compocn)%num
-             call ESMF_StateGet(is_local%wrap%NStateExp(compocn), itemName=fldsTo(compocn)%shortname(n), &
-                  itemType=itemType, rc=rc)
-             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-             if (itemType /= ESMF_STATEITEM_NOTFOUND) then
-                connected = NUOPC_IsConnected(is_local%wrap%NStateExp(compocn), fieldName=fldsTo(compocn)%shortname(n), rc=rc)
-                if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-                if (connected) then
-                   exit  ! break out of the loop when first connected is found
-                end if
-             end if
-          end do
-          if (connected) then
-             ocn_prognostic = .true.
-          end if
-       end if
-
-       if (atm_prognostic .or. ocn_prognostic) then
-          if (dbug_flag > 5) then
-             call ESMF_LogWrite(trim(subname)//": calling med_phases_atmocn_init", ESMF_LOGMSG_INFO, rc=dbrc)
-          endif
-          call med_phases_atmocn_init(gcomp, rc=rc)
-          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-       end if
-    end if
-
-    if (allDone) then
        ! set InitializeDataComplete Component Attribute to "true", indicating
        ! to the driver that this Component has fully initialized its data
        call NUOPC_CompAttributeSet(gcomp, name="InitializeDataComplete", value="true", rc=rc)
@@ -1901,6 +1915,7 @@ module MED
 
        call ESMF_LogWrite("MED - Initialize-Data-Dependency from ATM is SATISFIED!!!", ESMF_LOGMSG_INFO, rc=rc)
        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
     end if
 
     if (dbug_flag > 5) then
@@ -1982,7 +1997,8 @@ module MED
     rc = ESMF_SUCCESS
 
     if (mode /= 'write' .and. mode /= 'read') then
-      call ESMF_LogWrite(trim(subname)//": ERROR mode not allowed "//trim(mode), ESMF_LOGMSG_ERROR, line=__LINE__, file=u_FILE_u, rc=dbrc)
+       call ESMF_LogWrite(trim(subname)//": ERROR mode not allowed "//trim(mode), &
+            ESMF_LOGMSG_ERROR, line=__LINE__, file=u_FILE_u, rc=dbrc)
       rc = ESMF_FAILURE
       return
     endif

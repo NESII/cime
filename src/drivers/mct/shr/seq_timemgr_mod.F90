@@ -2336,6 +2336,9 @@ logical function seq_timemgr_EClockDateInSync( EClock, ymd, tod, prev)
   end if
   call seq_timemgr_ETimeGet( ETime, ymd=ymd1, tod=tod1 )
 
+  write(6,*)'DEBUG: DateInSync: ymd,tod  = ',ymd ,tod
+  write(6,*)'DEBUG: DateInSync: ymd1,tod1= ',ymd1,tod1
+
   ! --- If current dates agree return true -- else false
 
   if ( (ymd == ymd1) .and. (tod == tod1) )then

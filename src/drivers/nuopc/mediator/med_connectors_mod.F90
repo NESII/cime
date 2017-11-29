@@ -204,11 +204,9 @@ contains
   !-----------------------------------------------------------------------------
 
   subroutine med_connectors_post_generic(gcomp, type, rc)
-    type(ESMF_GridComp)  :: gcomp
-    character(len=*), intent(in) :: type
-    integer, intent(out) :: rc
-    !DEBUG
-    character(SHR_KIND_CL)          :: cvalue
+    type(ESMF_GridComp)           :: gcomp
+    character(len=*), intent(in)  :: type
+    integer,          intent(out) :: rc
 
     ! local variables
     type(ESMF_Clock)           :: clock
@@ -216,7 +214,7 @@ contains
     character(len=*),parameter :: subname='(med_connectors_post_generic)'
 
     ! Note: for information obtained by the mediator always write out the state
-    ! if statewrite_flag is .true. 
+    ! if statewrite_flag is .true.
 
     if (dbug_flag > 5) then
       call ESMF_LogWrite(trim(subname)//trim(type)//": called", ESMF_LOGMSG_INFO, rc=dbrc)
@@ -719,7 +717,7 @@ contains
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     if (dbug_flag > 1) then
-      call shr_nuopc_methods_State_diagnose(State, trim(subname)//trim(string), rc=rc)
+      call shr_nuopc_methods_State_diagnose(State, string=trim(subname)//trim(string), rc=rc)
     endif
 
     ! Write out the fields in State to netcdf files
