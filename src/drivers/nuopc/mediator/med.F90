@@ -1414,11 +1414,7 @@ module MED
     character(len=128)          :: value, rhname, rhname_file
     integer                     :: SrcMaskValue, DstMaskValue
     integer                     :: n
-    logical                     :: atm_prognostic
-    logical                     :: ocn_prognostic
     logical                     :: first_call = .true.
-    logical                     :: compute_atmocn_albedo = .true.
-    real(ESMF_KIND_R8)          :: nextsw_cday
     character(len=*), parameter :: subname='(module_MEDIATOR:DataInitialize)'
     !-----------------------------------------------------------
 
@@ -1442,15 +1438,6 @@ module MED
     ! get the current time out of the clock
     call ESMF_ClockGet(clock, currTime=time, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-
-    ! check that all imported fields from ATM show correct timestamp
-    !TODO: need to loop through fields from all of the components from which
-    !TODO: valid field data is expected at this time!!
-
-    !DEBUG
-    call shr_nuopc_methods_State_diagnose(is_local%wrap%NStateImp(compatm),subname//':ISatm',rc=rc)
-    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
-    !DEBUG
 
     if (first_call) then
 
@@ -1793,54 +1780,11 @@ module MED
     first_call = .false.
 
     !---------------------------------------
-    ! Initialize that atm/ocn flux calculation and ocean albedo calculation as
-    ! long as a valid value of nextsw_cday is passed from the atmosphere
+    ! Carry out data dependency for atm initialization if needed
     !---------------------------------------
 
-    ! Check if the atm/ocn init should be done
-    ! This is the case if there is either a prognostic ocean or a prognostic atmosphere - (both are fine as well)
-    ! Note that xxx_prognostic flag will be .true. if fields are expected to be sent from the mediator to the compnent
-
-    if (is_local%wrap%med_coupling_active(compocn,compatm) .and. &
-        is_local%wrap%med_coupling_active(compatm,compocn)) then
-
-       if (compute_atmocn_albedo) then
-          call shr_nuopc_methods_State_GetScalar(State=is_local%wrap%NStateImp(compatm), &
-               scalar_id=seq_flds_scalar_index_nextsw_cday, value=nextsw_cday, mpicom=is_local%wrap%mpicom, rc=rc)
-
-          if (nextsw_cday == 0._ESMF_KIND_R8) then
-
-             call ESMF_LogWrite("MED - nextsw_cday is zero", ESMF_LOGMSG_INFO, rc=rc)
-             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-             call ESMF_LogWrite("MED - Initialize-Data-Dependency(1) from ATM NOT YET SATISFIED!!!", ESMF_LOGMSG_INFO, rc=rc)
-             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-             RETURN
-
-          else
-
-             call ESMF_LogWrite("MED - initialize atm/ocn fluxes and compute ocean albedo", ESMF_LOGMSG_INFO, rc=rc)
-             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-
-             ! Initialize atm/ocn fluxes and ocean albedo
-             call med_phases_atmocn_init(gcomp, rc=rc)
-             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-
-             ! Compute ocean albedoes
-             ! This will update the relevant module arrays in med_atmocn_mod.F90
-             ! since they are simply pointers into the FBAtmOcn, FBAtm and FBOcn field bundles
-             call med_phases_atmocn_ocnalb(gcomp, rc=rc)
-             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-
-             compute_atmocn_albedo = .false.
-
-          end if
-       end if
-
-    end if
-
-    !---------------------------------------
-    ! Finish atm initialization if needed
-    !---------------------------------------
+    !TODO: need to loop through fields from all of the components from which
+    !TODO: valid field data is expected at this time!!
 
     ! First check to see if the import state from the atmosphere is all done
     allDone = .true.  ! reset if an item is found that is not done
@@ -1876,10 +1820,47 @@ module MED
        endif
     enddo
 
-    ! TODO: Add a new logical that says that need to do data dependency from atm - and only execute the following block
-    ! if there is a data dependency from the atm
+    ! Check if the atm/ocn init should be done
+    ! This is the case if there is either a prognostic ocean or a prognostic atmosphere - (both are fine as well)
+    ! Note that xxx_prognostic flag will be .true. if fields are expected to be sent from the mediator to the compnent
 
     if (.not. allDone) then
+
+       if (is_local%wrap%med_coupling_active(compocn,compatm) .and. &
+           is_local%wrap%med_coupling_active(compatm,compocn)) then
+
+          call ESMF_StateGet(is_local%wrap%NStateImp(compatm), itemName=trim(seq_flds_scalar_name), field=field, rc=rc)
+          if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return
+
+          atCorrectTime = NUOPC_IsAtTime(field, time, rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          if (.not. atCorrectTime) then
+
+             call ESMF_LogWrite("MED - cpl_scalars are not at corret time ", ESMF_LOGMSG_INFO, rc=rc)
+             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+             call ESMF_LogWrite("MED - Initialize-Data-Dependency(1) from ATM NOT YET SATISFIED!!!", ESMF_LOGMSG_INFO, rc=rc)
+             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             RETURN ! IMPORTANT - return if cpl_scalars have not been set
+
+          else
+
+             call ESMF_LogWrite("MED - initialize atm/ocn fluxes and compute ocean albedo", ESMF_LOGMSG_INFO, rc=rc)
+             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             ! Initialize atm/ocn fluxes and ocean albedo
+             call med_phases_atmocn_init(gcomp, rc=rc)
+             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             ! Compute ocean albedoes
+             ! This will update the relevant module arrays in med_atmocn_mod.F90
+             ! since they are simply pointers into the FBAtmOcn, FBAtm and FBOcn field bundles
+             call med_phases_atmocn_ocnalb(gcomp, rc=rc)
+             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          end if
+       end if
 
        ! Do the merge to the atmospheric component
        call med_phases_prep_atm(gcomp, rc=rc)

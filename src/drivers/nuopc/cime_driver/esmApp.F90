@@ -81,6 +81,7 @@ program esmApp
 
   ! Destroy the earth system Component
   call ESMF_LogWrite("ESMF_GridCompDestroy called", ESMF_LOGMSG_INFO, rc=rc)
+  call ESMF_LogSet(flush=.true., trace=.true., rc=rc)
   call ESMF_GridCompDestroy(esmComp, rc=rc)
   if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
     line=__LINE__, &
