@@ -1381,7 +1381,8 @@ module med_phases_mod
     call ESMF_GridCompGetInternalState(gcomp, is_local, rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    ! Determine nextsw_cday
+    ! Determine nextsw_cday - note that shr_nuopc_methods_State_GetScalar includes a broadcast
+    ! to all other pets im mpicom
     call shr_nuopc_methods_State_GetScalar(is_local%wrap%NstateImp(compatm), &
         scalar_id=seq_flds_scalar_index_nextsw_cday, value=nextsw_cday, mpicom=is_local%wrap%mpicom, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return

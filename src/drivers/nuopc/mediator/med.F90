@@ -6,6 +6,7 @@ module MED
   ! do so.
   !-----------------------------------------------------------------------------
 
+  use mpi
   use ESMF
   use NUOPC
   use NUOPC_Mediator, only: &
@@ -1414,7 +1415,10 @@ module MED
     character(len=128)          :: value, rhname, rhname_file
     integer                     :: SrcMaskValue, DstMaskValue
     integer                     :: n
+    integer                     :: len
+    integer                     :: ierr
     logical                     :: first_call = .true.
+    character(MPI_MAX_ERROR_STRING) :: lstring
     character(len=*), parameter :: subname='(module_MEDIATOR:DataInitialize)'
     !-----------------------------------------------------------
 
@@ -1829,14 +1833,27 @@ module MED
        if (is_local%wrap%med_coupling_active(compocn,compatm) .and. &
            is_local%wrap%med_coupling_active(compatm,compocn)) then
 
+          ! Obtain scalar data field from atm import state
           call ESMF_StateGet(is_local%wrap%NStateImp(compatm), itemName=trim(seq_flds_scalar_name), field=field, rc=rc)
           if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return
 
-          atCorrectTime = NUOPC_IsAtTime(field, time, rc=rc)
-          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+          ! Determine if the scalar data in atm import state is at the correct time - only check this on master task
+          ! since scalar data is only obtained from atm import state on master task
+          if (mastertask) then
+             atCorrectTime = NUOPC_IsAtTime(field, time, rc=rc)
+             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+          end if
+          call MPI_BCAST (atCorrectTime, 1, MPI_LOGICAL, 0, is_local%wrap%mpicom, rc)
+          if (rc /= MPI_SUCCESS) then
+             call MPI_ERROR_STRING(rc,lstring,len,ierr)
+             call ESMF_LogWrite(trim(subname)//": ERROR "//trim(lstring), ESMF_LOGMSG_INFO, line=__LINE__, file=u_FILE_u, rc=dbrc)
+             rc = ESMF_FAILURE
+             if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return
+          endif
 
           if (.not. atCorrectTime) then
 
+             ! If scalar data in atm import state is not at the correct time - then return
              call ESMF_LogWrite("MED - cpl_scalars are not at corret time ", ESMF_LOGMSG_INFO, rc=rc)
              if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
              call ESMF_LogWrite("MED - Initialize-Data-Dependency(1) from ATM NOT YET SATISFIED!!!", ESMF_LOGMSG_INFO, rc=rc)
@@ -1846,6 +1863,8 @@ module MED
 
           else
 
+             ! If scalar data in atm import state is at the correct time then initialize the atm/ocean fluxes
+             ! and compute the ocean albedos
              call ESMF_LogWrite("MED - initialize atm/ocn fluxes and compute ocean albedo", ESMF_LOGMSG_INFO, rc=rc)
              if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 

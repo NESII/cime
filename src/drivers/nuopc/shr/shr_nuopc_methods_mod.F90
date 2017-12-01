@@ -3787,7 +3787,8 @@ module shr_nuopc_methods_mod
 
   subroutine shr_nuopc_methods_State_GetScalar(State, scalar_id, value, mpicom, rc)
     ! ----------------------------------------------
-    ! Get scalar data from State for a particular name
+    ! Get scalar data from State for a particular name and broadcast it to all other pets
+    ! in mpicom
     ! ----------------------------------------------
     type(ESMF_State),  intent(in)     :: State
     integer,           intent(in)     :: scalar_id
