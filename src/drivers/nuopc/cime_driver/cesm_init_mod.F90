@@ -1,78 +1,39 @@
 module cesm_init_mod
 
-  !----------------------------------------------------------------------------
-  ! share code & libs
-  !----------------------------------------------------------------------------
   use ESMF
   use NUOPC
-  use shr_kind_mod,      only: SHR_KIND_R8
-  use shr_kind_mod,      only: SHR_KIND_CS
-  use shr_kind_mod,      only: SHR_KIND_CL
+  use shr_kind_mod,      only: SHR_KIND_R8, SHR_KIND_CS, SHR_KIND_CL
   use shr_sys_mod,       only: shr_sys_abort, shr_sys_flush
   use shr_const_mod,     only: shr_const_cday
   use shr_file_mod,      only: shr_file_setLogLevel, shr_file_setLogUnit
   use shr_file_mod,      only: shr_file_setIO, shr_file_getUnit
   use shr_scam_mod,      only: shr_scam_checkSurface
   use shr_map_mod,       only: shr_map_setDopole
-  use shr_mpi_mod,       only: shr_mpi_min, shr_mpi_max, shr_mpi_bcast, shr_mpi_chkerr
+  use shr_mpi_mod,       only: shr_mpi_bcast, shr_mpi_chkerr
   use shr_mem_mod,       only: shr_mem_init, shr_mem_getusage
-  use shr_cal_mod,       only: shr_cal_date2ymd, shr_cal_ymd2date, shr_cal_advdateInt
+  use shr_cal_mod,       only: shr_cal_date2ymd
   use shr_orb_mod,       only: shr_orb_params
   use shr_frz_mod,       only: shr_frz_freezetemp_init
   use shr_reprosum_mod,  only: shr_reprosum_setopts
-  use perf_mod
-
-  !----------------------------------------------------------------------------
-  ! mpi comm data & routines, plus logunit and loglevel
-  !----------------------------------------------------------------------------
-  use seq_comm_mct, only: CPLID, GLOID, logunit, loglevel
-  use seq_comm_mct, only: ATMID, LNDID, OCNID, ICEID, GLCID, ROFID, WAVID, ESPID
-  use seq_comm_mct, only: ALLATMID,ALLLNDID,ALLOCNID,ALLICEID,ALLGLCID,ALLROFID,ALLWAVID,ALLESPID
-  use seq_comm_mct, only: CPLALLATMID,CPLALLLNDID,CPLALLOCNID,CPLALLICEID
-  use seq_comm_mct, only: CPLALLGLCID,CPLALLROFID,CPLALLWAVID,CPLALLESPID
-  use seq_comm_mct, only: CPLATMID,CPLLNDID,CPLOCNID,CPLICEID,CPLGLCID,CPLROFID,CPLWAVID,CPLESPID
-  use seq_comm_mct, only: num_inst_atm, num_inst_lnd, num_inst_rof
-  use seq_comm_mct, only: num_inst_ocn, num_inst_ice, num_inst_glc
-  use seq_comm_mct, only: num_inst_wav, num_inst_esp
-  use seq_comm_mct, only: num_inst_xao, num_inst_frc, num_inst_phys
-  use seq_comm_mct, only: num_inst_total, num_inst_max
-  use seq_comm_mct, only: seq_comm_iamin, seq_comm_name, seq_comm_namelen, seq_comm_iamroot
-  use seq_comm_mct, only: seq_comm_init, seq_comm_setnthreads, seq_comm_getnthreads
-  use seq_comm_mct, only: seq_comm_gloroot
-  use seq_comm_mct, only: seq_comm_getinfo => seq_comm_setptrs
-
-  !----------------------------------------------------------------------------
-  ! clock & alarm routines and variables
-  !----------------------------------------------------------------------------
-  use seq_timemgr_mod, only: seq_timemgr_type
-  use seq_timemgr_mod, only: seq_timemgr_clockInit
-  use seq_timemgr_mod, only: seq_timemgr_clockPrint
-  use seq_timemgr_mod, only: seq_timemgr_EClockGetData
-  use seq_timemgr_mod, only: seq_timemgr_histavg_type
-  use seq_timemgr_mod, only: seq_timemgr_type_never
-  use seq_timemgr_mod, only: seq_SyncClock => seq_timemgr_SyncClock
-  use seq_timemgr_mod, only: EClock_d => seq_timemgr_Eclock_d
-  use seq_timemgr_mod, only: EClock_a => seq_timemgr_Eclock_a
-  use seq_timemgr_mod, only: EClock_l => seq_timemgr_Eclock_l
-  use seq_timemgr_mod, only: EClock_o => seq_timemgr_Eclock_o
-  use seq_timemgr_mod, only: EClock_i => seq_timemgr_Eclock_i
-  use seq_timemgr_mod, only: EClock_g => seq_timemgr_Eclock_g
-  use seq_timemgr_mod, only: EClock_r => seq_timemgr_Eclock_r
-  use seq_timemgr_mod, only: EClock_w => seq_timemgr_Eclock_w
-  use seq_timemgr_mod, only: EClock_e => seq_timemgr_Eclock_e
-
-  use med_infodata_mod, only: med_infodata_init1, med_infodata_init2, med_infodata_putdata
-  use med_infodata_mod, only: infodata=>med_infodata
-
-  !----------------------------------------------------------------------------
-  ! list of fields transferred between components
-  !----------------------------------------------------------------------------
-  use seq_flds_mod, only : seq_flds_set
-
-  !----------------------------------------------------------------------------
-  ! timing routines
-  !----------------------------------------------------------------------------
+  use seq_comm_mct     , only: CPLID, GLOID, logunit, loglevel
+  use seq_comm_mct     , only: ATMID, LNDID, OCNID, ICEID, GLCID, ROFID, WAVID, ESPID
+  use seq_comm_mct     , only: num_inst_atm, num_inst_lnd, num_inst_rof
+  use seq_comm_mct     , only: num_inst_ocn, num_inst_ice, num_inst_glc
+  use seq_comm_mct     , only: num_inst_wav, num_inst_esp
+  use seq_comm_mct     , only: num_inst_xao, num_inst_frc, num_inst_phys
+  use seq_comm_mct     , only: num_inst_total, num_inst_max
+  use seq_comm_mct     , only: seq_comm_iamin, seq_comm_name, seq_comm_namelen, seq_comm_iamroot
+  use seq_comm_mct     , only: seq_comm_init, seq_comm_setnthreads, seq_comm_getnthreads
+  use seq_comm_mct     , only: seq_comm_gloroot
+  use seq_comm_mct     , only: seq_comm_getinfo => seq_comm_setptrs
+  use seq_timemgr_mod  , only: seq_timemgr_type
+  use seq_timemgr_mod  , only: seq_timemgr_clockInit
+  use seq_timemgr_mod  , only: seq_timemgr_clockPrint
+  use seq_timemgr_mod  , only: seq_timemgr_EClockGetData
+  use med_infodata_mod , only: med_infodata_init1, med_infodata_init2, med_infodata
+  use seq_flds_mod     , only: seq_flds_set
   use t_drv_timers_mod
+  use perf_mod
 
   ! MV: use seq_io_mod, only : seq_io_cpl_init
   ! MV: use seq_io_mod, only : seq_io_cpl_init
@@ -83,75 +44,18 @@ module cesm_init_mod
   private
 
   public :: cesm_init
-  public :: mpicom_GLOID
 
 #include <mpif.h>
 
-  !----------------------------------------------------------------------------
-  ! orbital parameters
-  !----------------------------------------------------------------------------
-  character(len=*), public, parameter :: orb_fixed_year       = 'fixed_year'
-  character(len=*), public, parameter :: orb_variable_year    = 'variable_year'
-  character(len=*), public, parameter :: orb_fixed_parameters = 'fixed_parameters'
-
-  !----------------------------------------------------------------------------
-  ! communicator groups and related
-  !----------------------------------------------------------------------------
-  integer  :: Global_Comm
-
-  integer  :: mpicom_GLOID          ! MPI global communicator
-  integer  :: mpicom_CPLID          ! MPI cpl communicator
-  integer  :: mpicom_OCNID          ! MPI ocn communicator for ensemble member 1
-
-  integer  :: mpicom_CPLALLATMID    ! MPI comm for CPLALLATMID
-  integer  :: mpicom_CPLALLLNDID    ! MPI comm for CPLALLLNDID
-  integer  :: mpicom_CPLALLICEID    ! MPI comm for CPLALLICEID
-  integer  :: mpicom_CPLALLOCNID    ! MPI comm for CPLALLOCNID
-  integer  :: mpicom_CPLALLGLCID    ! MPI comm for CPLALLGLCID
-  integer  :: mpicom_CPLALLROFID    ! MPI comm for CPLALLROFID
-  integer  :: mpicom_CPLALLWAVID    ! MPI comm for CPLALLWAVID
-
-  integer  :: iam_GLOID             ! pe number in global id
-  logical  :: iamin_CPLID           ! pe associated with CPLID
-  logical  :: iamroot_GLOID         ! GLOID masterproc
-  logical  :: iamroot_CPLID         ! CPLID masterproc
-
-  logical  :: iamin_CPLALLATMID     ! pe associated with CPLALLATMID
-  logical  :: iamin_CPLALLLNDID     ! pe associated with CPLALLLNDID
-  logical  :: iamin_CPLALLICEID     ! pe associated with CPLALLICEID
-  logical  :: iamin_CPLALLOCNID     ! pe associated with CPLALLOCNID
-  logical  :: iamin_CPLALLGLCID     ! pe associated with CPLALLGLCID
-  logical  :: iamin_CPLALLROFID     ! pe associated with CPLALLROFID
-  logical  :: iamin_CPLALLWAVID     ! pe associated with CPLALLWAVID
-
-  !----------------------------------------------------------------------------
-  ! complist: list of comps on this pe
-  !----------------------------------------------------------------------------
-
-  ! allow enough room for names of all physical components + coupler,
-  ! where each string can be up to (max_inst_name_len+1) characters
-  ! long (+1 allows for a space before each name)
-  character(len=(seq_comm_namelen+1)*(num_inst_phys+1)) :: complist
-
-  !----------------------------------------------------------------------------
-  ! formats
-  !----------------------------------------------------------------------------
-  character(*), parameter :: subname = '(seq_mct_drv)'
-  character(*), parameter :: F00 = "('"//subname//" : ', 4A )"
-  character(*), parameter :: F0L = "('"//subname//" : ', A, L6 )"
-  character(*), parameter :: F0I = "('"//subname//" : ', A, 2i8 )"
-  character(*), parameter :: F01 = "('"//subname//" : ', A, 2i8, 3x, A )"
-  character(*), parameter :: F0R = "('"//subname//" : ', A, 2g23.15 )"
-  character(*), parameter :: FormatA = '(A,": =============== ", A41,          " ===============")'
-  character(*), parameter :: FormatD = '(A,": =============== ", A20,2I8,5x,   " ===============")'
-  character(*), parameter :: FormatR = '(A,": =============== ", A31,F9.3,1x,  " ===============")'
-  character(*), parameter :: FormatQ = '(A,": =============== ", A20,2F10.2,1x," ===============")'
+  character(len=*) , parameter    :: u_FILE_u =  __FILE__
 
 !===============================================================================
 contains
 !===============================================================================
 
-  subroutine cesm_init(driver)
+  subroutine cesm_init(driver, &
+                       Eclock_d, Eclock_a, Eclock_l, Eclock_o, &
+                       Eclock_i, Eclock_g, Eclock_r, Eclock_w, Eclock_e)
 
     ! USES:
     use pio             , only: file_desc_t, pio_closefile, pio_file_is_open
@@ -167,10 +71,27 @@ contains
     use seq_io_read_mod , only: seq_io_read
 
     ! INPUT/OUTPUT PARAMETERS:
-    type(ESMF_GridComp), intent(inout)  :: driver
+    type(ESMF_GridComp)    , intent(inout) :: driver
+    type(ESMF_Clock)       , intent(inout) :: EClock_d
+    type(ESMF_Clock)       , intent(inout) :: EClock_a
+    type(ESMF_Clock)       , intent(inout) :: EClock_l
+    type(ESMF_Clock)       , intent(inout) :: EClock_o
+    type(ESMF_Clock)       , intent(inout) :: EClock_i
+    type(ESMF_Clock)       , intent(inout) :: EClock_g
+    type(ESMF_Clock)       , intent(inout) :: EClock_r
+    type(ESMF_Clock)       , intent(inout) :: EClock_w
+    type(ESMF_Clock)       , intent(inout) :: EClock_e
 
     ! LOCAL
     ! threading control
+    integer                         :: Global_Comm
+    integer                         :: mpicom_GLOID          ! MPI global communicator
+    integer                         :: mpicom_CPLID          ! MPI cpl communicator
+    integer                         :: mpicom_OCNID          ! MPI ocn communicator for ensemble member 1
+    integer                         :: iam_GLOID             ! pe number in global id
+    logical                         :: iamin_CPLID           ! pe associated with CPLID
+    logical                         :: iamroot_GLOID         ! GLOID masterproc
+    logical                         :: iamroot_CPLID         ! CPLID masterproc
     integer                         :: nthreads_GLOID        ! OMP global number of threads
     integer                         :: nthreads_CPLID        ! OMP cpl number of threads
     integer                         :: nthreads_ATMID        ! OMP atm number of threads
@@ -248,41 +169,41 @@ contains
     logical                         :: comp_iamin(num_inst_total)
     character(len=seq_comm_namelen) :: comp_name(num_inst_total)
     logical                         :: flag
-    integer                         :: i, it
-    character(SHR_KIND_CL)          :: start_type     ! Type of startup
-    logical                         :: read_restart   ! read the restart file, based on start_type
-    character(SHR_KIND_CL)          :: restart_file   ! Full archive path to restart file
-    character(SHR_KIND_CL)          :: restart_pfile  ! Restart pointer file
-    real(SHR_KIND_R8)               :: nextsw_cday    ! calendar of next atm shortwave
-    real(SHR_KIND_R8)               :: precip_fact    ! precip factor
-    character(SHR_KIND_CL)          :: rest_case_name ! Short case identification
-    integer                         :: unitn          ! Namelist unit number to read
-    logical                         :: exists         ! true if file exists
-    integer                         :: ierr           ! MPI error return
-    integer                         :: rc             ! return code
-    logical                         :: atm_present    ! .true.  => atm is present
-    logical                         :: lnd_present    ! .true.  => land is present
-    logical                         :: ice_present    ! .true.  => ice is present
-    logical                         :: ocn_present    ! .true.  => ocn is present
-    logical                         :: glc_present    ! .true.  => glc is present
-    logical                         :: glclnd_present ! .true.  => glc is computing land coupling
-    logical                         :: glcocn_present ! .true.  => glc is computing ocean runoff
-    logical                         :: glcice_present ! .true.  => glc is computing icebergs
-    logical                         :: rofice_present ! .true.  => rof is computing icebergs
-    logical                         :: rof_present    ! .true.  => rof is present
-    logical                         :: flood_present  ! .true.  => rof is computing flood
-    logical                         :: wav_present    ! .true.  => wav is present
-    logical                         :: esp_present    ! .true.  => esp is present
+    integer                         :: i, it, n
+    character(SHR_KIND_CL)          :: start_type            ! Type of startup
+    logical                         :: read_restart          ! read the restart file, based on start_type
+    character(SHR_KIND_CL)          :: restart_file          ! Full archive path to restart file
+    character(SHR_KIND_CL)          :: restart_pfile         ! Restart pointer file
+    character(SHR_KIND_CL)          :: rest_case_name        ! Short case identification
+    integer                         :: unitn                 ! Namelist unit number to read
+    logical                         :: exists                ! true if file exists
+    integer                         :: ierr                  ! MPI error return
+    integer                         :: rc                    ! return code
+    logical                         :: atm_present           ! .true.  => atm is present
+    logical                         :: lnd_present           ! .true.  => land is present
+    logical                         :: ice_present           ! .true.  => ice is present
+    logical                         :: ocn_present           ! .true.  => ocn is present
+    logical                         :: glc_present           ! .true.  => glc is present
+    logical                         :: glclnd_present        ! .true.  => glc is computing land coupling
+    logical                         :: glcocn_present        ! .true.  => glc is computing ocean runoff
+    logical                         :: glcice_present        ! .true.  => glc is computing icebergs
+    logical                         :: rofice_present        ! .true.  => rof is computing icebergs
+    logical                         :: rof_present           ! .true.  => rof is present
+    logical                         :: flood_present         ! .true.  => rof is computing flood
+    logical                         :: wav_present           ! .true.  => wav is present
+    logical                         :: esp_present           ! .true.  => esp is present
+    character(len=*) , parameter    :: NLFileName = "drv_in" ! input namelist filename
+    integer          , parameter    :: ens1=1                ! use first instance of ensemble only
+    integer          , parameter    :: fix1=1                ! temporary hard-coding to first ensemble, needs to be fixed
     real(SHR_KIND_R8), parameter    :: epsilo = shr_const_mwwv/shr_const_mwdair
-    character(len=*) , parameter    :: u_FILE_u =  __FILE__
     character(len=*) , parameter    :: sp_str = 'str_undefined'
     character(len=*) , parameter    :: start_type_start = "startup"
     character(len=*) , parameter    :: start_type_cont  = "continue"
     character(len=*) , parameter    :: start_type_brnch = "branch"
-    character(len=*) , parameter    :: NLFileName = "drv_in"  ! input namelist filename
-    integer          , parameter    :: ens1=1    ! use first instance of ensemble only
-    integer          , parameter    :: fix1=1    ! temporary hard-coding to first ensemble, needs to be fixed
-    integer                         :: eai, eli, eoi, eii, egi, eri, ewi, eei, exi, efi  ! component instance counters
+    character(len=*) , parameter    :: orb_fixed_year       = 'fixed_year'
+    character(len=*) , parameter    :: orb_variable_year    = 'variable_year'
+    character(len=*) , parameter    :: orb_fixed_parameters = 'fixed_parameters'
+    character(len=*) , parameter    :: subname = '(cesm_init)'
 
     !----------------------------------------------------------
     !| Initialize MCT and MPI communicators and IO
@@ -315,135 +236,71 @@ contains
     it=1
     call seq_comm_getinfo(GLOID,mpicom=mpicom_GLOID,&
          iamroot=iamroot_GLOID,nthreads=nthreads_GLOID)
-    if (iamroot_GLOID) output_perf = .true.
 
     call seq_comm_getinfo(CPLID,mpicom=mpicom_CPLID,&
          iamroot=iamroot_CPLID,nthreads=nthreads_CPLID,&
          iam=comp_comm_iam(it))
-    if (iamroot_CPLID) output_perf = .true.
-
-    if (iamin_CPLID) complist = trim(complist)//' cpl'
 
     comp_id(it)    = CPLID
     comp_comm(it)  = mpicom_CPLID
     iamin_CPLID    = seq_comm_iamin(CPLID)
     comp_iamin(it) = seq_comm_iamin(comp_id(it))
     comp_name(it)  = seq_comm_name(comp_id(it))
-
-    do eai = 1,num_inst_atm
+    do n = 1,num_inst_atm
        it=it+1
-       comp_id(it)    = ATMID(eai)
+       comp_id(it)    = ATMID(n)
        comp_iamin(it) = seq_comm_iamin(comp_id(it))
        comp_name(it)  = seq_comm_name(comp_id(it))
-       call seq_comm_getinfo(ATMID(eai), mpicom=comp_comm(it), &
-            nthreads=nthreads_ATMID, iam=comp_comm_iam(it))
-       if (seq_comm_iamin(ATMID(eai))) then
-          complist = trim(complist)//' '//trim(seq_comm_name(ATMID(eai)))
-       endif
-       if (seq_comm_iamroot(ATMID(eai))) output_perf = .true.
+       call seq_comm_getinfo(ATMID(n), mpicom=comp_comm(it), nthreads=nthreads_ATMID, iam=comp_comm_iam(it))
     enddo
-    call seq_comm_getinfo(CPLALLATMID, mpicom=mpicom_CPLALLATMID)
-    iamin_CPLALLATMID = seq_comm_iamin(CPLALLATMID)
-
-    do eli = 1,num_inst_lnd
+    do n = 1,num_inst_lnd
        it=it+1
-       comp_id(it)    = LNDID(eli)
+       comp_id(it)    = LNDID(n)
        comp_iamin(it) = seq_comm_iamin(comp_id(it))
        comp_name(it)  = seq_comm_name(comp_id(it))
-       call seq_comm_getinfo(LNDID(eli), mpicom=comp_comm(it), &
-            nthreads=nthreads_LNDID, iam=comp_comm_iam(it))
-       if (seq_comm_iamin(LNDID(eli))) then
-          complist = trim(complist)//' '//trim(seq_comm_name(LNDID(eli)))
-       endif
-       if (seq_comm_iamroot(LNDID(eli))) output_perf = .true.
+       call seq_comm_getinfo(LNDID(n), mpicom=comp_comm(it), nthreads=nthreads_LNDID, iam=comp_comm_iam(it))
     enddo
-    call seq_comm_getinfo(CPLALLLNDID, mpicom=mpicom_CPLALLLNDID)
-    iamin_CPLALLLNDID = seq_comm_iamin(CPLALLLNDID)
-
-    do eoi = 1,num_inst_ocn
+    do n = 1,num_inst_ocn
        it=it+1
-       comp_id(it)    = OCNID(eoi)
+       comp_id(it)    = OCNID(n)
        comp_iamin(it) = seq_comm_iamin(comp_id(it))
        comp_name(it)  = seq_comm_name(comp_id(it))
-       call seq_comm_getinfo(OCNID(eoi), mpicom=comp_comm(it), &
-            nthreads=nthreads_OCNID, iam=comp_comm_iam(it))
-       if (seq_comm_iamin (OCNID(eoi))) then
-          complist = trim(complist)//' '//trim(seq_comm_name(OCNID(eoi)))
-       endif
-       if (seq_comm_iamroot(OCNID(eoi))) output_perf = .true.
+       call seq_comm_getinfo(OCNID(n), mpicom=comp_comm(it), nthreads=nthreads_OCNID, iam=comp_comm_iam(it))
     enddo
-    call seq_comm_getinfo(CPLALLOCNID, mpicom=mpicom_CPLALLOCNID)
-    iamin_CPLALLOCNID = seq_comm_iamin(CPLALLOCNID)
-
-    do eii = 1,num_inst_ice
+    do n = 1,num_inst_ice
        it=it+1
-       comp_id(it)    = ICEID(eii)
+       comp_id(it)    = ICEID(n)
        comp_iamin(it) = seq_comm_iamin(comp_id(it))
        comp_name(it)  = seq_comm_name(comp_id(it))
-       call seq_comm_getinfo(ICEID(eii), mpicom=comp_comm(it), &
-            nthreads=nthreads_ICEID, iam=comp_comm_iam(it))
-       if (seq_comm_iamin (ICEID(eii))) then
-          complist = trim(complist)//' '//trim(seq_comm_name(ICEID(eii)))
-       endif
-       if (seq_comm_iamroot(ICEID(eii))) output_perf = .true.
+       call seq_comm_getinfo(ICEID(n), mpicom=comp_comm(it), nthreads=nthreads_ICEID, iam=comp_comm_iam(it))
     enddo
-    call seq_comm_getinfo(CPLALLICEID, mpicom=mpicom_CPLALLICEID)
-    iamin_CPLALLICEID = seq_comm_iamin(CPLALLICEID)
-
-    do egi = 1,num_inst_glc
+    do n = 1,num_inst_glc
        it=it+1
-       comp_id(it)    = GLCID(egi)
+       comp_id(it)    = GLCID(n)
        comp_iamin(it) = seq_comm_iamin(comp_id(it))
        comp_name(it)  = seq_comm_name(comp_id(it))
-       call seq_comm_getinfo(GLCID(egi), mpicom=comp_comm(it), nthreads=nthreads_GLCID, iam=comp_comm_iam(it))
-       if (seq_comm_iamin (GLCID(egi))) then
-          complist = trim(complist)//' '//trim(seq_comm_name(GLCID(egi)))
-       endif
-       if (seq_comm_iamroot(GLCID(egi))) output_perf = .true.
+       call seq_comm_getinfo(GLCID(n), mpicom=comp_comm(it), nthreads=nthreads_GLCID, iam=comp_comm_iam(it))
     enddo
-    call seq_comm_getinfo(CPLALLGLCID, mpicom=mpicom_CPLALLGLCID)
-    iamin_CPLALLGLCID = seq_comm_iamin(CPLALLGLCID)
-
-    do eri = 1,num_inst_rof
+    do n = 1,num_inst_rof
        it=it+1
-       comp_id(it)    = ROFID(eri)
+       comp_id(it)    = ROFID(n)
        comp_iamin(it) = seq_comm_iamin(comp_id(it))
        comp_name(it)  = seq_comm_name(comp_id(it))
-       call seq_comm_getinfo(ROFID(eri), mpicom=comp_comm(it), &
-            nthreads=nthreads_ROFID, iam=comp_comm_iam(it))
-       if (seq_comm_iamin(ROFID(eri))) then
-          complist = trim(complist)//' '//trim( seq_comm_name(ROFID(eri)))
-       endif
-       if (seq_comm_iamroot(ROFID(eri))) output_perf = .true.
+       call seq_comm_getinfo(ROFID(n), mpicom=comp_comm(it), nthreads=nthreads_ROFID, iam=comp_comm_iam(it))
     enddo
-    call seq_comm_getinfo(CPLALLROFID, mpicom=mpicom_CPLALLROFID)
-    iamin_CPLALLROFID = seq_comm_iamin(CPLALLROFID)
-
-    do ewi = 1,num_inst_wav
+    do n = 1,num_inst_wav
        it=it+1
-       comp_id(it)    = WAVID(ewi)
+       comp_id(it)    = WAVID(n)
        comp_iamin(it) = seq_comm_iamin(comp_id(it))
        comp_name(it)  = seq_comm_name(comp_id(it))
-       call seq_comm_getinfo(WAVID(ewi), mpicom=comp_comm(it), &
-            nthreads=nthreads_WAVID, iam=comp_comm_iam(it))
-       if (seq_comm_iamin(WAVID(ewi))) then
-          complist = trim(complist)//' '//trim(seq_comm_name(WAVID(ewi)))
-       endif
-       if (seq_comm_iamroot(WAVID(ewi))) output_perf = .true.
+       call seq_comm_getinfo(WAVID(n), mpicom=comp_comm(it), nthreads=nthreads_WAVID, iam=comp_comm_iam(it))
     enddo
-    call seq_comm_getinfo(CPLALLWAVID, mpicom=mpicom_CPLALLWAVID)
-    iamin_CPLALLWAVID = seq_comm_iamin(CPLALLWAVID)
-
-    do eei = 1,num_inst_esp
+    do n = 1,num_inst_esp
        it=it+1
-       comp_id(it)    = ESPID(eei)
+       comp_id(it)    = ESPID(n)
        comp_iamin(it) = seq_comm_iamin(comp_id(it))
        comp_name(it)  = seq_comm_name(comp_id(it))
-       call seq_comm_getinfo(ESPID(eei), mpicom=comp_comm(it), &
-            nthreads=nthreads_ESPID, iam=comp_comm_iam(it))
-       if (seq_comm_iamin (ESPID(eei))) then
-          complist = trim(complist)//' '//trim(seq_comm_name(ESPID(eei)))
-       endif
+       call seq_comm_getinfo(ESPID(n), mpicom=comp_comm(it), nthreads=nthreads_ESPID, iam=comp_comm_iam(it))
     enddo
     ! ESP components do not use the coupler (they are 'external')
 
@@ -511,7 +368,7 @@ contains
     ! Initialize infodata
     !----------------------------------------------------------
 
-    call med_infodata_init1(infodata, GLOID)
+    call med_infodata_init1(med_infodata, GLOID)
 
     !----------------------------------------------------------
     ! Add atm_aero to driver attributes
@@ -630,8 +487,8 @@ contains
 
     call NUOPC_CompAttributeGet(driver, name="cime_model", value=cime_model, rc=rc)
     if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) call shr_sys_abort()
-    if ( trim(cime_model) /= 'acme' .and. trim(cime_model) /= 'cesm') then
-       call shr_sys_abort( subname//': cime_model must be set to acme or cesm, aborting')
+    if ( trim(cime_model) /= 'cesm') then
+       call shr_sys_abort( subname//': cime_model must be set to cesm, aborting')
     end if
 
     call seq_flds_set(nlfilename, GLOID, cime_model)
@@ -794,46 +651,21 @@ contains
        call NUOPC_CompAttributeSet(driver, name='restart_pfile', value=restart_file, rc=rc)
        if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) call shr_sys_abort()
 
-       !--- NOTE: use CPLID here because seq_io is only value on CPLID
-       if (seq_comm_iamin(CPLID)) then
-          call seq_io_read(restart_file, pioid, nextsw_cday, 'seq_infodata_nextsw_cday')
-          call seq_io_read(restart_file, pioid, precip_fact, 'seq_infodata_precip_fact')
-       endif
-
-       !--- Send from CPLID ROOT to GLOBALID ROOT, use bcast as surrogate
-       call shr_mpi_bcast(nextsw_cday    ,mpicom_GLOID, pebcast=seq_comm_gloroot(CPLID))
-       call shr_mpi_bcast(precip_fact    ,mpicom_GLOID, pebcast=seq_comm_gloroot(CPLID))
-
-       call med_infodata_putData(infodata, &
-            nextsw_cday=nextsw_cday,       &
-            precip_fact=precip_fact)
     endif
 
     !----------------------------------------------------------
     ! Initialize time manager
     !----------------------------------------------------------
 
-    call NUOPC_CompAttributeGet(driver, name='read_restart', value=cvalue, rc=rc)
-    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) call shr_sys_abort()
-    read(cvalue,*) read_restart
-
-    call NUOPC_CompAttributeGet(driver, name="restart_file", value=restart_file, rc=rc)
-    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) call shr_sys_abort()
-
-    call seq_timemgr_clockInit(seq_SyncClock, nlfilename, &
-         read_restart, restart_file, pioid, mpicom_gloid, &
-         EClock_d, EClock_a, EClock_l, EClock_o,          &
+    call seq_timemgr_clockInit(driver, pioid, mpicom_gloid, &
+         EClock_d, EClock_a, EClock_l, EClock_o, &
          EClock_i, Eclock_g, Eclock_r, Eclock_w, Eclock_e)
-
-    if (iamroot_CPLID) then
-       call seq_timemgr_clockPrint(seq_SyncClock)
-    endif
 
     !----------------------------------------------------------
     ! Initialize infodata items which need the clocks
     !----------------------------------------------------------
 
-    call med_infodata_init2(infodata)
+    call med_infodata_init2(med_infodata)
 
     !----------------------------------------------------------
     ! Initialize freezing point calculation for all components

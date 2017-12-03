@@ -1813,7 +1813,7 @@ module MED
                 call ESMF_LogWrite("MED - Initialize-Data-Dependency from ATM NOT YET SATISFIED!!!", ESMF_LOGMSG_INFO, rc=rc)
                 if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
-                call ESMF_LogWrite("MED - Initialize-Data-Dependency Field is " // trim(fldsFr(compatm)%shortname(n)), &
+                call ESMF_LogWrite("MED - Unsatisfied Data-Dependency Field is " // trim(fldsFr(compatm)%shortname(n)), &
                      ESMF_LOGMSG_INFO, rc=rc)
                 if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 

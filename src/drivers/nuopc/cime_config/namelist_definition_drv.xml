@@ -364,7 +364,6 @@
     <desc>cime model</desc>
     <values>
       <value cime_model='cesm'>cesm</value>
-      <value cime_model='acme'>acme</value>
     </values>
   </entry>
 
@@ -2782,7 +2781,7 @@
   <entry id="atm_cpl_dt" modify_via_xml="ATM_NCPL" skip_default_entry="true">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       atm coupling interval in seconds
       set via ATM_NCPL in env_run.xml.
@@ -2795,7 +2794,7 @@
   <entry id="lnd_cpl_dt" modify_via_xml="LND_NCPL" skip_default_entry="true">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       lnd coupling interval in seconds
       set via LND_NCPL in env_run.xml.
@@ -2808,7 +2807,7 @@
   <entry id="rof_cpl_dt" modify_via_xml="ROF_NCPL" skip_default_entry="true">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       river runoff coupling interval in seconds
       currently set by default to 10800 seconds.
@@ -2819,7 +2818,7 @@
   <entry id="ice_cpl_dt" modify_via_xml="ICE_NCPL" skip_default_entry="true">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       ice coupling interval in seconds
       set via ICE_NCPL in env_run.xml.
@@ -2832,7 +2831,7 @@
   <entry id="ocn_cpl_dt" modify_via_xml="OCN_NCPL" skip_default_entry="true">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       ocn coupling interval in seconds
       set via OCN_NCPL in env_run.xml.
@@ -2845,7 +2844,7 @@
   <entry id="glc_cpl_dt" modify_via_xml="GLC_NCPL" skip_default_entry="true">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       glc coupling interval in seconds
       set via GLC_NCPL in env_run.xml.
@@ -2858,7 +2857,7 @@
   <entry id="glc_avg_period" modify_via_xml="GLC_AVG_PERIOD">
     <type>char</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <valid_values>glc_coupling_period,yearly</valid_values>
     <values>
       <value>$GLC_AVG_PERIOD</value>
@@ -2879,7 +2878,7 @@
   <entry id="wav_cpl_dt" modify_via_xml="WAV_NCPL" skip_default_entry="true">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       wav coupling interval in seconds
       set via WAV_NCPL in env_run.xml.
@@ -2892,7 +2891,7 @@
   <entry id="esp_cpl_dt" skip_default_entry="true">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       esp run interval in seconds
       esp_cpl_dt is the number of times the esp is run per NCPL_BASE_PERIOD
@@ -2906,94 +2905,10 @@
     </values>
   </entry>
 
-  <entry id="atm_cpl_offset">
-    <type>integer</type>
-    <category>time</category>
-    <group>seq_timemgr_inparm</group>
-    <desc>
-      atm coupling interval offset in seconds default: 0
-    </desc>
-    <values>
-      <value>0</value>
-    </values>
-  </entry>
-
-  <entry id="lnd_cpl_offset">
-    <type>integer</type>
-    <category>time</category>
-    <group>seq_timemgr_inparm</group>
-    <desc>
-      lnd coupling interval offset in seconds default: 0
-    </desc>
-    <values>
-      <value>0</value>
-    </values>
-  </entry>
-
-  <entry id="ice_cpl_offset">
-    <type>integer</type>
-    <category>time</category>
-    <group>seq_timemgr_inparm</group>
-    <desc>
-      ice coupling interval offset in seconds default: 0
-    </desc>
-    <values>
-      <value>0</value>
-    </values>
-  </entry>
-
-  <entry id="ocn_cpl_offset">
-    <type>integer</type>
-    <category>time</category>
-    <group>seq_timemgr_inparm</group>
-    <desc>
-      ocn coupling interval offset in seconds default: 0
-    </desc>
-    <values>
-      <value>0</value>
-    </values>
-  </entry>
-
-  <entry id="glc_cpl_offset">
-    <type>integer</type>
-    <category>time</category>
-    <group>seq_timemgr_inparm</group>
-    <desc>
-      glc coupling interval offset in seconds default: 0
-    </desc>
-    <values>
-      <value>0</value>
-    </values>
-  </entry>
-
-  <entry id="wav_cpl_offset">
-    <type>integer</type>
-    <category>time</category>
-    <group>seq_timemgr_inparm</group>
-    <desc>
-      wav coupling interval offset in seconds default: 0
-    </desc>
-    <values>
-      <value>0</value>
-    </values>
-  </entry>
-
-  <entry id="esp_cpl_offset">
-    <type>integer</type>
-    <category>time</category>
-    <group>seq_timemgr_inparm</group>
-    <desc>
-      esp coupling interval offset in seconds default: 0
-    </desc>
-    <values>
-      <value>0</value>
-    </values>
-  </entry>
-
   <entry id="esp_run_on_pause" modify_via_xml="ESP_RUN_ON_PAUSE">
     <type>logical</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       true => ESP component runs after driver 'pause cycle'
       If any component 'pauses' (see PAUSE_OPTION, PAUSE_N and
@@ -3011,7 +2926,7 @@
   <entry id="calendar" modify_via_xml="CALENDAR">
     <type>char</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <valid_values>NO_LEAP,GREGORIAN</valid_values>
     <desc>
       calendar in use.  [NO_LEAP, GREOGORIAN].
@@ -3025,7 +2940,7 @@
   <entry id="start_ymd" modify_via_xml="RUN_STARTDATE">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       Run start date in yyyymmdd format, only used for startup and hybrid runs.
       default: 00010101
@@ -3038,7 +2953,7 @@
   <entry id="start_tod" modify_via_xml="START_TOD">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       Start time-of-day in universal time (seconds), should be between zero and 86400
       default: 0
@@ -3051,7 +2966,7 @@
   <entry id="stop_option" modify_via_xml="STOP_OPTION">
     <type>char</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <valid_values>none,never,nsteps,nstep,nseconds,nsecond,nminutes,nminute,nhours,nhour,ndays,nday,monthly,nmonths,nmonth,nyears,nyear,date,ifdays0,end</valid_values>
     <desc>
       sets the run length with stop_n and stop_ymd
@@ -3077,7 +2992,7 @@
   <entry id="stop_n" modify_via_xml="STOP_N">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       Sets the run length with stop_option and stop_ymd
     </desc>
@@ -3089,7 +3004,7 @@
   <entry id="stop_ymd" modify_via_xml="STOP_YMD">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       date in yyyymmdd format, sets the run length with stop_option and stop_n,
       can be in addition to stop_option and stop_n, negative value implies off
@@ -3099,10 +3014,23 @@
     </values>
   </entry>
 
+  <entry id="stop_tod">
+    <type>integer</type>
+    <category>time</category>
+    <group>DRIVER_clock_attributes</group>
+    <desc>
+      Stop time-of-day in universal time (seconds), should be between zero and 86400
+      default: 0
+    </desc>
+    <values>
+      <value>0</value>
+    </values>
+  </entry>
+
   <entry id="restart_option" modify_via_xml="REST_OPTION">
     <type>char</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <valid_values>none,never,nsteps,nstep,nseconds,nsecond,nminutes,nminute,nhours,nhour,ndays,nday,nmonths,monthly,nmonth,nyears,nyear,date,ifdays0,end</valid_values>
     <desc>
       sets the restart frequency with restart_n and restart_ymd
@@ -3128,7 +3056,7 @@
   <entry id="restart_n" modify_via_xml="REST_N">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       Sets model restart writes with restart_option and restart_ymd (same options as stop_n)
     </desc>
@@ -3140,7 +3068,7 @@
   <entry id="restart_ymd" modify_via_xml="REST_YMD">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       Date in yyyymmdd format, sets model restart write date with rest_option and restart_n
       default: STOP_N
@@ -3150,10 +3078,36 @@
     </values>
   </entry>
 
+  <entry id="ref_ymd">
+    <type>integer</type>
+    <category>time</category>
+    <group>DRIVER_clock_attributes</group>
+    <desc>
+      Reference date in yyyymmdd format
+      default: 0
+    </desc>
+    <values>
+      <value>0</value>
+    </values>
+  </entry>
+
+  <entry id="ref_tod">
+    <type>integer</type>
+    <category>time</category>
+    <group>DRIVER_clock_attributes</group>
+    <desc>
+      Reference time of day in seconds
+      default: 0
+    </desc>
+    <values>
+      <value>0</value>
+    </values>
+  </entry>
+
   <entry id="end_restart">
     <type>logical</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       true => write restarts at end of run
       forces a restart write at the end of the run in addition to any
@@ -3169,7 +3123,7 @@
   <entry id="history_option" modify_via_xml="HIST_OPTION">
     <type>char</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <valid_values>none,never,nsteps,nstep,nseconds,nsecond,nminutes,nminute,nhours,nhour,ndays,nday,monthly,nmonths,nmonth,nyears,nyear,date,ifdays0,end</valid_values>
     <desc>
       coupler history snapshot option (used with history_n and history_ymd)
@@ -3196,7 +3150,7 @@
   <entry id="history_n" modify_via_xml="HIST_N">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       sets coupler snapshot history file frequency (like restart_n)
       set by HIST_N in env_run.xml.
@@ -3209,7 +3163,7 @@
   <entry id="history_ymd" modify_via_xml="HIST_YMD">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       date associated with history_option date.  yyyymmdd format.
       set by HIST_DATE in env_run.xml.
@@ -3222,7 +3176,7 @@
   <entry id="histavg_option" modify_via_xml="HISTAVG_OPTION">
     <type>char</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <valid_values>none,never,nsteps,nstep,nseconds,nsecond,nminutes,nminute,nhours,nhour,ndays,nday,monthly,nmonths,nmonth,nyears,nyear,date,ifdays0,end</valid_values>
     <desc>
       coupler time average history option (used with histavg_n and histavg_ymd)
@@ -3249,7 +3203,7 @@
   <entry id="histavg_n" modify_via_xml="HISTAVG_N">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       Sets coupler time-average history file frequency (like restart_option)
       set by AVGHIST_N in env_run.xml.
@@ -3262,7 +3216,7 @@
   <entry id="histavg_ymd" modify_via_xml="HISTAVG_YMD">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       date associated with histavg_option date.  yyyymmdd format.
       set by AVGHIST_DATE in env_run.xml.
@@ -3275,7 +3229,7 @@
   <entry id="barrier_option" modify_via_xml="BARRIER_OPTION">
     <type>char</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <valid_values>none,never,nsteps,nstep,nseconds,nsecond,nminutes,nminute,nhours,nhour,ndays,nday,nmonths,monthly,nmonth,nyears,nyear,date,ifdays0,end</valid_values>
     <desc>
       sets the driver barrier frequency to sync models across all tasks with barrier_n and barrier_ymd
@@ -3290,7 +3244,7 @@
   <entry id="barrier_n" modify_via_xml="BARRIER_N">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       Sets model barriers with barrier_option and barrier_ymd (same options as stop_n)
       default: 1
@@ -3303,7 +3257,7 @@
   <entry id="barrier_ymd" modify_via_xml="BARRIER_DATE">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       Date in yyyymmdd format, sets model barriers date with barrier_option and barrier_n
     </desc>
@@ -3315,7 +3269,7 @@
   <entry id="tprof_option">
     <type>char</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <valid_values>none,never,nsteps,nstep,nseconds,nsecond,nminutes,nminute,nhours,nhour,ndays,nday,monthly,nmonths,nmonth,nyears,nyear,date,ifdays0,end</valid_values>
     <desc>
       Sets timing output file frequency (like rest_option but relative to run start date)
@@ -3341,7 +3295,7 @@
   <entry id="tprof_n">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       Sets timing output file frequency (like restart_n)
     </desc>
@@ -3353,7 +3307,7 @@
   <entry id="tprof_ymd">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       yyyymmdd format, sets timing output file date (like restart_date)
     </desc>
@@ -3365,7 +3319,7 @@
   <entry id="pause_option" modify_via_xml="PAUSE_OPTION">
     <type>char</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <valid_values>none,never,nsteps,nstep,nseconds,nsecond,nminutes,nminute,nhours,nhour,ndays,nday,monthly,nmonths,nmonth,nyears,nyear</valid_values>
     <desc>
       sets the pause frequency with pause_n
@@ -3388,7 +3342,7 @@
   <entry id="pause_n" modify_via_xml="PAUSE_N">
     <type>integer</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       Sets the pause frequency with pause_option
     </desc>
@@ -3400,7 +3354,7 @@
   <entry id="pause_component_list" modify_via_xml="PAUSE_COMPONENT_LIST" skip_default_entry="true">
     <type>char</type>
     <category>time</category>
-    <group>seq_timemgr_inparm</group>
+    <group>DRIVER_clock_attributes</group>
     <desc>
       A colon-separated list of component types (e.g., ocn,atm) to receive a
       resume signal after a pause has happened. Special values "all" or "none"

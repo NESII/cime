@@ -105,7 +105,7 @@ module ESM
 #endif
   use seq_comm_mct          , only: seq_comm_petlist
   use cesm_init_mod         , only: cesm_init
-  use seq_timemgr_mod       , only: seq_timemgr_EClock_d, seq_timemgr_EClock_a, seq_timemgr_EClock_o
+  use seq_timemgr_mod       , only: seq_timemgr_type
   use shr_nuopc_fldList_mod , only: shr_nuopc_fldList_setDict_fromseqflds
   use shr_nuopc_methods_mod , only: shr_nuopc_methods_Clock_TimePrint
   use shr_nuopc_methods_mod , only: shr_nuopc_methods_ChkErr
@@ -119,6 +119,16 @@ module ESM
   logical                 :: mastertask
   character(*), parameter :: runseq_filename = "cesm.runconfig"
   character(*), parameter :: u_FILE_u = __FILE__
+
+  type(ESMF_Clock), target :: EClock_d
+  type(ESMF_Clock), target :: EClock_a
+  type(ESMF_Clock), target :: EClock_l
+  type(ESMF_Clock), target :: EClock_o
+  type(ESMF_Clock), target :: EClock_i
+  type(ESMF_Clock), target :: EClock_g
+  type(ESMF_Clock), target :: EClock_r
+  type(ESMF_Clock), target :: EClock_w
+  type(ESMF_Clock), target :: EClock_e
 
   private
 
@@ -288,11 +298,24 @@ module ESM
     call NUOPC_FreeFormatDestroy(attrFF, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    attrFF = NUOPC_FreeFormatCreate(config, label="DRIVER_clock_attributes::", relaxedflag=.true., rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    if (mastertask) then
+       call NUOPC_FreeFormatPrint(attrFF, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+    call NUOPC_CompAttributeIngest(driver, attrFF, addFlag=.true., rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    call NUOPC_FreeFormatDestroy(attrFF, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
     !-------------------------------------------
     ! Initialize mct and pets and cesm stuff
     !-------------------------------------------
 
-    call cesm_init(driver)
+    call cesm_init(driver, &
+                   Eclock_d, Eclock_a, Eclock_l, Eclock_o, &
+                   Eclock_i, Eclock_g, Eclock_r, Eclock_w, Eclock_e)
 
     call shr_nuopc_fldList_setDict_fromseqflds(rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -1049,6 +1072,14 @@ module ESM
         call NUOPC_FreeFormatDestroy(attrFF, rc=rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
+        ! for now read DRIVER_auxhist_attributes from config file into FreeFormat
+        attrFF = NUOPC_FreeFormatCreate(config, label="DRIVER_clock_attributes::", relaxedflag=.true., rc=rc)
+        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+        call NUOPC_CompAttributeIngest(child, attrFF, addFlag=.true., rc=rc)
+        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+        call NUOPC_FreeFormatDestroy(attrFF, rc=rc)
+        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
       else
 
         call ESMF_LogSetError(ESMF_RC_NOT_VALID, &
@@ -1069,10 +1100,10 @@ module ESM
     ! Set baseline clock
     !--------
 
-    call ESMF_GridCompSet(driver, clock=seq_timemgr_Eclock_o, rc=rc)
+    call ESMF_GridCompSet(driver, clock=Eclock_o, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    call shr_nuopc_methods_Clock_TimePrint(seq_timemgr_Eclock_o,subname//'EClock_base',rc)
+    call shr_nuopc_methods_Clock_TimePrint(Eclock_o,subname//'EClock_base',rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     if (dbug_flag > 5) then
@@ -1125,8 +1156,8 @@ module ESM
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !DEBUG
-    call NUOPC_DriverGetComp(driver, srcCompLabel="ATM", dstCompLabel="MED", comp=connector, rc=rc)
-    call NUOPC_CompAttributeSet(connector, name="Verbosity", value="high", rc=rc)
+    !call NUOPC_DriverGetComp(driver, srcCompLabel="ATM", dstCompLabel="MED", comp=connector, rc=rc)
+    !call NUOPC_CompAttributeSet(connector, name="Verbosity", value="high", rc=rc)
     !DEBUG
 
     call NUOPC_FreeFormatDestroy(runSeqFF, rc=rc)
@@ -1136,14 +1167,16 @@ module ESM
     ! Update Clocks
     !--------
 
-    call NUOPC_DriverSetRunSequence(driver, slot=1, clock=seq_timemgr_EClock_o, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call NUOPC_DriverSetRunSequence(driver, slot=2, clock=seq_timemgr_EClock_a, rc=rc)
+    call NUOPC_DriverSetRunSequence(driver, slot=1, clock=EClock_o, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    call shr_nuopc_methods_Clock_TimePrint(seq_timemgr_Eclock_o,subname//'EClock_o',rc)
+    call NUOPC_DriverSetRunSequence(driver, slot=2, clock=EClock_a, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_methods_Clock_TimePrint(seq_timemgr_Eclock_a,subname//'EClock_a',rc)
+
+    call shr_nuopc_methods_Clock_TimePrint(Eclock_o,subname//'EClock_o',rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    call shr_nuopc_methods_Clock_TimePrint(Eclock_a,subname//'EClock_a',rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     ! Diagnostic
