@@ -353,6 +353,7 @@ module datm_comp_nuopc
   !===============================================================================
 
   subroutine InitializeRealize(gcomp, importState, exportState, clock, rc)
+
     implicit none
     type(ESMF_GridComp)  :: gcomp
     type(ESMF_State)     :: importState, exportState
@@ -360,33 +361,33 @@ module datm_comp_nuopc
     integer, intent(out) :: rc
 
     ! local variables
-    integer(IN)            :: phase
-    character(ESMF_MAXSTR) :: convCIM, purpComp
-    type(ESMF_Grid)        :: Egrid
-    type(ESMF_Mesh)        :: Emesh
-    integer                :: nx_global, ny_global
-    type(ESMF_VM)          :: vm
-    integer                :: n
-    character(CL)          :: cvalue
-    integer(IN)            :: shrlogunit                ! original log unit
-    integer(IN)            :: shrloglev                 ! original log level
-    logical                :: read_restart              ! start from restart
-    integer(IN)            :: ierr                      ! error code
-    logical                :: scmMode = .false.         ! single column mode
-    real(R8)               :: scmLat  = shr_const_SPVAL ! single column lat
-    real(R8)               :: scmLon  = shr_const_SPVAL ! single column lon
-    real(R8)               :: orbEccen                  ! orb eccentricity (unit-less)
-    real(R8)               :: orbMvelpp                 ! orb moving vernal eq (radians)
-    real(R8)               :: orbLambm0                 ! orb mean long of perhelion (radians)
-    real(R8)               :: orbObliqr                 ! orb obliquity (radians)
-    real(R8)               :: nextsw_cday               ! calendar of next atm sw
-    logical                :: connected                 ! is field connected?
-    integer                :: klon, klat
-    integer                :: lsize
-    integer                :: iam
-    real(r8), pointer      :: lon(:),lat(:)
-    integer , pointer      :: gindex(:)
-    character(len=*),parameter :: subname=trim(modName)//':(InitializeRealize) '
+    integer(IN)                  :: phase
+    character(ESMF_MAXSTR)       :: convCIM, purpComp
+    type(ESMF_Grid)              :: Egrid
+    type(ESMF_Mesh)              :: Emesh
+    integer                      :: nx_global, ny_global
+    type(ESMF_VM)                :: vm
+    integer                      :: n
+    character(CL)                :: cvalue
+    integer(IN)                  :: shrlogunit                ! original log unit
+    integer(IN)                  :: shrloglev                 ! original log level
+    logical                      :: read_restart              ! start from restart
+    integer(IN)                  :: ierr                      ! error code
+    logical                      :: scmMode = .false.         ! single column mode
+    real(R8)                     :: scmLat  = shr_const_SPVAL ! single column lat
+    real(R8)                     :: scmLon  = shr_const_SPVAL ! single column lon
+    real(R8)                     :: orbEccen                  ! orb eccentricity (unit-less)
+    real(R8)                     :: orbMvelpp                 ! orb moving vernal eq (radians)
+    real(R8)                     :: orbLambm0                 ! orb mean long of perhelion (radians)
+    real(R8)                     :: orbObliqr                 ! orb obliquity (radians)
+    real(R8)                     :: nextsw_cday               ! calendar of next atm sw
+    logical                      :: connected                 ! is field connected?
+    integer                      :: klon, klat
+    integer                      :: lsize
+    integer                      :: iam
+    real(r8), pointer            :: lon(:),lat(:)
+    integer , pointer            :: gindex(:)
+    character(len=*) , parameter :: subname=trim(modName)//':(InitializeRealize) '
     !-------------------------------------------------------------------------------
 
     ! TODO: read_restart, scmlat, scmlon, orbeccen, orbmvelpp, orblambm0, orbobliqr needs to be obtained
@@ -458,6 +459,15 @@ module datm_comp_nuopc
          file=u_FILE_u)) &
          return  ! bail out
     read(cvalue,*) scmMode
+
+    call NUOPC_CompAttributeGet(gcomp, name='read_restart', value=cvalue, rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
+         line=__LINE__, &
+         file=u_FILE_u)) &
+         return  ! bail out
+    read(cvalue,*) read_restart
+
+    phase = 1  ! only one phase for nuopc cap
 
     call datm_comp_init(clock, x2d, d2x, &
          seq_flds_x2a_fields, seq_flds_a2x_fields, &

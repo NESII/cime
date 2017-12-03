@@ -401,7 +401,7 @@ module med_fraction_mod
     type(ESMF_GridComp)  :: gcomp
     integer, intent(out) :: rc
 
-    ! This subroutine initializes the fractions
+    ! Initialize Fractions
 
     ! local variables
     type(ESMF_Clock)            :: clock
@@ -414,6 +414,7 @@ module med_fraction_mod
     real(ESMF_KIND_R8), pointer :: dataPtr1(:),dataPtr2(:),dataPtr3(:),dataPtr4(:)
     integer                     :: i,j,n
     character(len=*),parameter  :: subname='(med_fraction_set)'
+    !---------------------------------------
 
     if (dbug_flag > 5) then
       call ESMF_LogWrite(trim(subname)//": called", ESMF_LOGMSG_INFO, rc=dbrc)

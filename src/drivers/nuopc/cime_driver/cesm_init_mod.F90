@@ -4,7 +4,6 @@ module cesm_init_mod
   use NUOPC
   use shr_kind_mod,      only: SHR_KIND_R8, SHR_KIND_CS, SHR_KIND_CL
   use shr_sys_mod,       only: shr_sys_abort, shr_sys_flush
-  use shr_const_mod,     only: shr_const_cday
   use shr_file_mod,      only: shr_file_setLogLevel, shr_file_setLogUnit
   use shr_file_mod,      only: shr_file_setIO, shr_file_getUnit
   use shr_scam_mod,      only: shr_scam_checkSurface
@@ -179,7 +178,6 @@ contains
     logical                         :: exists                ! true if file exists
     integer                         :: ierr                  ! MPI error return
     integer                         :: rc                    ! return code
-    logical                         :: atm_present           ! .true.  => atm is present
     logical                         :: lnd_present           ! .true.  => land is present
     logical                         :: ice_present           ! .true.  => ice is present
     logical                         :: ocn_present           ! .true.  => ocn is present
@@ -223,7 +221,6 @@ contains
     !
     ! If pio_async_interface is true Global_Comm is MPI_COMM_NULL on the servernodes
     ! and server nodes do not return from shr_pio_init2
-    !
     !   if (Global_Comm /= MPI_COMM_NULL) then
 
     call seq_comm_init(Global_Comm, NLFileName)
@@ -330,12 +327,6 @@ contains
     !  shr_pio_init2
 
     call shr_pio_init2(comp_id,comp_name,comp_iamin,comp_comm,comp_comm_iam)
-
-    !----------------------------------------------------------
-    ! Print Model heading and copyright message
-    !----------------------------------------------------------
-
-    ! MV: if (iamroot_CPLID) call seq_cesm_printlogheader()
 
     !----------------------------------------------------------
     !| Timer initialization (has to be after mpi init)
@@ -494,16 +485,6 @@ contains
     call seq_flds_set(nlfilename, GLOID, cime_model)
 
     !----------------------------------------------------------
-    ! Initialize dopole flag (as a module variable in shr_map_mod)
-    !----------------------------------------------------------
-
-    call NUOPC_CompAttributeGet(driver, name="shr_map_dopole", value=cvalue, rc=rc)
-    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) call shr_sys_abort()
-    read(cvalue,*) shr_map_dopole
-
-    call shr_map_setDopole(shr_map_dopole)
-
-    !----------------------------------------------------------
     ! Initialize options for reproducible sums
     !----------------------------------------------------------
 
@@ -521,22 +502,6 @@ contains
 
     call shr_reprosum_setopts(repro_sum_use_ddpdd_in=reprosum_use_ddpdd, &
          repro_sum_rel_diff_max_in=reprosum_diffmax, repro_sum_recompute_in=reprosum_recompute)
-
-    !----------------------------------------------------------
-    ! Check cpl_seq_option
-    !----------------------------------------------------------
-
-    call NUOPC_CompAttributeGet(driver, name="cpl_seq_option", value=cpl_seq_option, rc=rc)
-    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) call shr_sys_abort()
-
-    if (trim(cpl_seq_option) /= 'CESM1_ORIG' .and. &
-        trim(cpl_seq_option) /= 'CESM1_ORIG_TIGHT' .and. &
-        trim(cpl_seq_option) /= 'CESM1_MOD' .and. &
-        trim(cpl_seq_option) /= 'CESM1_MOD_TIGHT' .and. &
-        trim(cpl_seq_option) /= 'RASM_OPTION1' .and. &
-        trim(cpl_seq_option) /= 'RASM_OPTION2' ) then
-        call shr_sys_abort(subname//' invalid cpl_seq_option = '//trim(cpl_seq_option))
-    endif
 
     !----------------------------------------------------------
     ! Test Threading Setup in driver happens to be valid on all pes for all IDs
@@ -865,7 +830,7 @@ contains
        call seq_comm_getinfo(OCNID(ens1), mpicom=mpicom_OCNID)
 
        ! TODO: Single column mode needs to be re-implemented - previously all of the xxx_present flags were set
-       ! in med_infodata calls, reset here and the put back into med_infodata - this is no longer the case
+       ! in med_infodata calls, reset here and the copied back into med_infodata - this is no longer the case
        call shr_scam_checkSurface(scmlon, scmlat, &
             OCNID(ens1), mpicom_OCNID,            &
             lnd_present=lnd_present,              &
@@ -896,10 +861,6 @@ contains
   subroutine driver_attributes_check( driver )
 
     ! !DESCRIPTION: Check that input driver config values have reasonable values
-
-    ! !USES:
-
-    implicit none
 
     ! !INPUT/OUTPUT PARAMETERS:
     type(ESMF_GridComp)    , intent(INOUT) :: driver

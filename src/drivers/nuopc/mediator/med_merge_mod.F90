@@ -79,7 +79,8 @@ module med_merge_mod
        if (ESMF_FieldBundleIsCreated(FB1,rc=rc)) then
          if (present(FB1w) .and. present(fldw1)) then
            if (.not.ESMF_FieldBundleIsCreated(FB1w,rc=rc)) then
-             call ESMF_LogWrite(trim(subname)//": error FB1w not created", ESMF_LOGMSG_ERROR, line=__LINE__, file=u_FILE_u, rc=dbrc)
+              call ESMF_LogWrite(trim(subname)//": error FB1w not created", &
+                   ESMF_LOGMSG_ERROR, line=__LINE__, file=u_FILE_u, rc=dbrc)
              rc = ESMF_FAILURE
            else
              call med_merge_fbx(FBout, n, FB1, FB1w, fldw1, document=ldocument, string=trim(lstring), rc=rc)
@@ -87,7 +88,8 @@ module med_merge_mod
            endif
          elseif ((present(FB1w) .and. .not.present(fldw1)) .or. &
                  (.not.present(FB1w) .and. present(fldw1))) then
-           call ESMF_LogWrite(trim(subname)//": error FB1w and fldw1 both required", ESMF_LOGMSG_ERROR, line=__LINE__, file=u_FILE_u, rc=dbrc)
+            call ESMF_LogWrite(trim(subname)//": error FB1w and fldw1 both required", &
+                 ESMF_LOGMSG_ERROR, line=__LINE__, file=u_FILE_u, rc=dbrc)
            rc = ESMF_FAILURE
            return
          else

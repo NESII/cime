@@ -8,6 +8,7 @@ module med_phases_mod
 
   use ESMF
   use NUOPC
+  use shr_kind_mod          , only : CL=>shr_kind_cl
   use shr_nuopc_methods_mod , only : shr_nuopc_methods_ChkErr
   use shr_nuopc_methods_mod , only : shr_nuopc_methods_FB_init
   use shr_nuopc_methods_mod , only : shr_nuopc_methods_FB_reset
@@ -47,9 +48,9 @@ module med_phases_mod
   real(ESMF_KIND_R8), parameter :: czero           = med_constants_czero
   integer           , parameter :: ispval_mask     = med_constants_ispval_mask
   character(len=*)  , parameter :: ice_fraction_name = 'Si_ifrac'
-  integer                :: dbrc
-  type(ESMF_FieldBundle) :: FBtmp1,FBtmp2
-  character(*),parameter :: u_FILE_u = &
+  integer                       :: dbrc
+  type(ESMF_FieldBundle)        :: FBtmp1,FBtmp2
+  character(*),parameter        :: u_FILE_u = &
     __FILE__
 
   public med_phases_prep_atm
@@ -64,6 +65,8 @@ module med_phases_mod
   public med_phases_atmocn_ocnalb
   public med_phases_atmocn_flux
 
+  private med_phases_map_frac
+
   !-----------------------------------------------------------------------------
   contains
   !-----------------------------------------------------------------------------
@@ -72,8 +75,7 @@ module med_phases_mod
     type(ESMF_GridComp)  :: gcomp
     integer, intent(out) :: rc
 
-    ! This Mediator phase runs before ATM and ICE are being called and
-    ! prepares the ATM and ICE import Fields.
+    ! Prepares the ATM import Fields.
 
     ! local variables
     type(ESMF_Clock)            :: clock
@@ -89,34 +91,59 @@ module med_phases_mod
     real(ESMF_KIND_R8), pointer :: ifrac_ab(:), ifrac_abr(:)  ! ice fraction on atm grid bilnr map
     real(ESMF_KIND_R8), pointer :: ifrac_ap(:), ifrac_apr(:)  ! ice fraction on atm grid patch map
     real(ESMF_KIND_R8), pointer :: ocnwgt(:),icewgt(:),customwgt(:)
-    integer                     :: i,j,n,n1,n2, lsize
+    integer                     :: i, j, n, n1, n2, ncnt, lsize
     logical,save                :: first_call = .true.
     character(len=*),parameter  :: subname='(med_phases_prep_atm)'
     !---------------------------------------
-
     if (dbug_flag > 5) then
       call ESMF_LogWrite(trim(subname)//": called", ESMF_LOGMSG_INFO, rc=dbrc)
     endif
     rc = ESMF_SUCCESS
 
-    ! query the Component for its clock, importState and exportState
-    call ESMF_GridCompGet(gcomp, clock=clock, importState=importState, &
-      exportState=exportState, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    !---------------------------------------
+    ! --- Get the internal state
+    !---------------------------------------
 
-    ! Get the internal state from Component.
     nullify(is_local%wrap)
     call ESMF_GridCompGetInternalState(gcomp, is_local, rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    !---------------------------------------
+    !--- Count the number of fields outside of scalar data, if zero, then return
+    !---------------------------------------
+
+    ! Note - the scalar field has been removed from all mediator field bundles - so this is why we check if the
+    ! fieldCount is 0 and not 1 here
+
+    call ESMF_FieldBundleGet(is_local%wrap%FBExp(compatm), fieldCount=ncnt, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    if (ncnt == 0) then
+       if (dbug_flag > 5) then
+          call ESMF_LogWrite(trim(subname)//": only scalar data is present in FBexp(compatm), returning", &
+               ESMF_LOGMSG_INFO, rc=dbrc)
+       endif
+       RETURN
+    end if
+
+    !---------------------------------------
+    !--- Get the current time from the clock
+    !---------------------------------------
+
+    call ESMF_GridCompGet(gcomp, clock=clock)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
     call ESMF_ClockGet(clock,currtime=time,rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
     call ESMF_TimeGet(time,timestring=timestr)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     if (dbug_flag > 1) then
       call ESMF_LogWrite(trim(subname)//": time = "//trim(timestr), ESMF_LOGMSG_INFO, rc=dbrc)
     endif
 
     call ESMF_ClockPrint(clock, options="currTime", &
-      preString="-------->"//trim(subname)//" mediating for: ", rc=rc)
+         preString="-------->"//trim(subname)//" mediating for: ", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !---------------------------------------
@@ -124,8 +151,9 @@ module med_phases_mod
     !---------------------------------------
 
     !tcraig, turn this off for ice2atm, use ice frac weighted mapping below
+
+    n2 = compatm
     do n1 = 1,ncomps
-       n2 = compatm
        if (n1/=compice .and. is_local%wrap%med_coupling_active(n1,n2)) then
           call shr_nuopc_methods_FB_reset(is_local%wrap%FBImp(n1,n2), value=czero, rc=rc)
           if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -212,22 +240,30 @@ module med_phases_mod
         call shr_nuopc_methods_FB_init(FBtmp1, fbgeom=is_local%wrap%FBImp(compice,compice), &
           fbflds=is_local%wrap%FBImp(compice,compice), name='FBtmp1_ice_x_frac', rc=rc)
         if (shr_nuopc_methods_chkerr(rc,__line__,u_file_u)) return
+
         call shr_nuopc_methods_FB_reset(FBtmp1, value=czero, rc=rc)
         if (shr_nuopc_methods_chkerr(rc,__line__,u_file_u)) return
 
         call shr_nuopc_methods_FB_GetFldPtr(is_local%wrap%FBImp(compice,compice), trim(ice_fraction_name), fldptr1=dataPtr1, rc=rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
         do n = 1,fldsFr(compice)%num
           if (fldsFr(compice)%shortname(n) /= trim(ice_fraction_name) .and. &
               shr_nuopc_methods_FB_FldChk(is_local%wrap%FBImp(compice,compice), fldsFr(compice)%shortname(n), rc=rc) .and. &
               shr_nuopc_methods_FB_FldChk(FBtmp1                              , fldsFr(compice)%shortname(n), rc=rc)) then
+
             call shr_nuopc_methods_FB_GetFldPtr(is_local%wrap%FBImp(compice,compice) , fldsFr(compice)%shortname(n), dataPtr3, rc=rc)
+
             call shr_nuopc_methods_FB_GetFldPtr(FBtmp1                               , fldsFr(compice)%shortname(n), dataPtr4, rc=rc)
+
             ! avoid non array fields like the scalars
-            if (lbound(dataptr1,1) == lbound(dataptr3,1) .and. ubound(dataptr1,1) == ubound(dataptr3,1)) then
+            if (lbound(dataptr1,1) == lbound(dataptr3,1) .and. &
+                ubound(dataptr1,1) == ubound(dataptr3,1)) then
+
               do i=lbound(dataptr3,1),ubound(dataptr3,1)
                 dataPtr4(i) = dataPtr3(i) * dataPtr1(i)
               enddo
+
             endif
           endif
         enddo
@@ -236,6 +272,7 @@ module med_phases_mod
 
         call shr_nuopc_methods_FB_reset(is_local%wrap%FBImp(compice,compatm), value=czero, rc=rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
         call shr_nuopc_methods_FB_Regrid(fldsFr(compice), &
              FBtmp1, &
              is_local%wrap%FBImp(compice,compatm), &
@@ -245,6 +282,7 @@ module med_phases_mod
              patchmap=is_local%wrap%RH(compice,compatm,mappatch), &
              string=trim(compname(compice))//'2'//trim(compname(compatm)), rc=rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
         call shr_nuopc_methods_FB_clean(FBtmp1, rc=rc)
         if (shr_nuopc_methods_chkerr(rc,__line__,u_file_u)) return
 
@@ -253,8 +291,10 @@ module med_phases_mod
         do n = 1,fldsFr(compice)%num
           if (fldsFr(compice)%shortname(n) /= trim(ice_fraction_name) .and. &
               shr_nuopc_methods_FB_FldChk(is_local%wrap%FBImp(compice,compatm), fldsFr(compice)%shortname(n), rc=rc)) then
+
             call shr_nuopc_methods_FB_GetFldPtr(is_local%wrap%FBImp(compice,compatm), fldsFr(compice)%shortname(n), dataPtr3, rc=rc)
             ! avoid non array fields like the scalars
+
             if (lbound(dataptr1,1) == lbound(dataptr3,1) .and. ubound(dataptr1,1) == ubound(dataptr3,1)) then
               if (fldsFr(compice)%mapping(n) == "conservefrac") then
                 do i=lbound(dataptr3,1),ubound(dataptr3,1)
@@ -283,21 +323,26 @@ module med_phases_mod
 
         !--- make sure ifrac_a in the mapped bundle is correct
         !--- this is handled by ice_fraction_name check in the mult/divide phases to avoid ice_fraction weighting
-!        call shr_nuopc_methods_FB_GetFldPtr(is_local%wrap%FBImp(compice,compatm), trim(ice_fraction_name), dataPtr3, rc=rc)
-!        do i=lbound(dataptr3,1),ubound(dataptr3,1)
-!          dataPtr3(i) = ifrac_af(i)
-!        enddo
+        ! call shr_nuopc_methods_FB_GetFldPtr(is_local%wrap%FBImp(compice,compatm), trim(ice_fraction_name), dataPtr3, rc=rc)
+        ! do i=lbound(dataptr3,1),ubound(dataptr3,1)
+        !    dataPtr3(i) = ifrac_af(i)
+        ! enddo
 
-        if (ESMF_RouteHandleIsCreated(is_local%wrap%RH(compice,compatm,mapconsf), rc=rc)) &
-          deallocate(ifrac_af, ifrac_afr)
-        if (ESMF_RouteHandleIsCreated(is_local%wrap%RH(compice,compatm,mapconsd), rc=rc)) &
-          deallocate(ifrac_ad, ifrac_adr)
-        if (ESMF_RouteHandleIsCreated(is_local%wrap%RH(compice,compatm,mapbilnr), rc=rc)) &
-          deallocate(ifrac_ab, ifrac_abr)
-        if (ESMF_RouteHandleIsCreated(is_local%wrap%RH(compice,compatm,mappatch), rc=rc)) &
-          deallocate(ifrac_ap, ifrac_apr)
+        if (ESMF_RouteHandleIsCreated(is_local%wrap%RH(compice,compatm,mapconsf), rc=rc)) then
+           deallocate(ifrac_af, ifrac_afr)
+        end if
+        if (ESMF_RouteHandleIsCreated(is_local%wrap%RH(compice,compatm,mapconsd), rc=rc)) then
+           deallocate(ifrac_ad, ifrac_adr)
+        end if
+        if (ESMF_RouteHandleIsCreated(is_local%wrap%RH(compice,compatm,mapbilnr), rc=rc)) then
+           deallocate(ifrac_ab, ifrac_abr)
+        end if
+        if (ESMF_RouteHandleIsCreated(is_local%wrap%RH(compice,compatm,mappatch), rc=rc)) then
+           deallocate(ifrac_ap, ifrac_apr)
+        end if
 
       else
+
         call shr_nuopc_methods_FB_reset(is_local%wrap%FBImp(compice,compatm), value=czero, rc=rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
         call shr_nuopc_methods_FB_Regrid(fldsFr(compice), &
@@ -309,6 +354,7 @@ module med_phases_mod
              patchmap=is_local%wrap%RH(compice,compatm,mappatch), &
              string=trim(compname(compice))//'2'//trim(compname(compatm)), rc=rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
       endif
 
       if (dbug_flag > 1) then
@@ -341,39 +387,45 @@ module med_phases_mod
     endif
 
     !---------------------------------------
-    !--- custom calculations
+    !--- set fractions back to atm
     !---------------------------------------
 
-    !--- set fractions
+    if (shr_nuopc_methods_FB_FldChk(is_local%wrap%FBExp(compatm), 'So_ofrac', rc=rc)) then
+       call shr_nuopc_methods_FB_GetFldPtr(is_local%wrap%FBExp(compatm), 'So_ofrac', dataptr1, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+       call shr_nuopc_methods_FB_GetFldPtr(is_local%wrap%FBFrac(compatm), 'ofrac', dataptr2, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+       lsize = size(dataptr1)
+       do n = 1,lsize
+          dataptr1(n) = dataptr2(n)
+       end do
+    end if
 
-    call shr_nuopc_methods_FB_GetFldPtr(is_local%wrap%FBExp(compatm), 'So_ofrac', dataptr1, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_methods_FB_GetFldPtr(is_local%wrap%FBFrac(compatm), 'ofrac', dataptr2, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    lsize = size(dataptr1)
-    do n = 1,lsize
-       dataptr1(n) = dataptr2(n)
-    end do
+    if (shr_nuopc_methods_FB_FldChk(is_local%wrap%FBExp(compatm), 'Si_ifrac', rc=rc)) then
+       call shr_nuopc_methods_FB_GetFldPtr(is_local%wrap%FBExp(compatm), 'Si_ifrac', dataptr1, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+       call shr_nuopc_methods_FB_GetFldPtr(is_local%wrap%FBFrac(compatm), 'ifrac', dataptr2, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+       do n = 1,lsize
+          dataptr1(n) = dataptr2(n)
+       end do
+    end if
 
-    call shr_nuopc_methods_FB_GetFldPtr(is_local%wrap%FBExp(compatm), 'Si_ifrac', dataptr1, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_methods_FB_GetFldPtr(is_local%wrap%FBFrac(compatm), 'ifrac', dataptr2, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    do n = 1,lsize
-       dataptr1(n) = dataptr2(n)
-    end do
+    if (shr_nuopc_methods_FB_FldChk(is_local%wrap%FBExp(compatm), 'Sl_lfrac', rc=rc)) then
+       call shr_nuopc_methods_FB_GetFldPtr(is_local%wrap%FBExp(compatm), 'Sl_lfrac', dataptr1, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+       call shr_nuopc_methods_FB_GetFldPtr(is_local%wrap%FBFrac(compatm), 'lfrac', dataptr2, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+       do n = 1,lsize
+          dataptr1(n) = dataptr2(n)
+       end do
+    end if
 
-    call shr_nuopc_methods_FB_GetFldPtr(is_local%wrap%FBExp(compatm), 'Sl_lfrac', dataptr1, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    call shr_nuopc_methods_FB_GetFldPtr(is_local%wrap%FBFrac(compatm), 'lfrac', dataptr2, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-    do n = 1,lsize
-       dataptr1(n) = dataptr2(n)
-    end do
-
+    !---------------------------------------
+    !--- custom calculations
+    !---------------------------------------
 #if (1 == 0)
     !---  ocn and ice fraction for merges
-
     call shr_nuopc_methods_FB_GetFldPtr(is_local%wrap%FBImp(compice,compatm), 'Si_ifrac', icewgt, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     allocate(ocnwgt(lbound(icewgt,1):ubound(icewgt,1),lbound(icewgt,2):ubound(icewgt,2)))
@@ -384,7 +436,6 @@ module med_phases_mod
     enddo
 
     !--- merges
-
     call shr_nuopc_methods_FB_FieldMerge(is_local%wrap%FBExp(compatm)  ,'surface_temperature' ,         &
          FBinA=is_local%wrap%FBImp(compocn,compatm) ,fnameA='sea_surface_temperature', wgtA=ocnwgt,     &
          FBinB=is_local%wrap%FBImp(compice,compatm) ,fnameB='sea_ice_temperature'    , wgtB=icewgt, rc=rc)
@@ -412,6 +463,7 @@ module med_phases_mod
   end subroutine med_phases_prep_atm
 
   !-----------------------------------------------------------------------------
+
   subroutine med_phases_prep_ice(gcomp, rc)
     type(ESMF_GridComp)  :: gcomp
     integer, intent(out) :: rc
@@ -426,7 +478,7 @@ module med_phases_mod
     type(ESMF_Field)            :: field
     type(InternalState)         :: is_local
     real(ESMF_KIND_R8), pointer :: dataPtr1(:),dataPtr2(:),dataPtr3(:),dataPtr4(:)
-    integer                     :: i,j,n,n1,n2
+    integer                     :: i,j,n,n1,n2,ncnt
     logical,save                :: first_call = .true.
     character(len=*),parameter  :: subname='(med_phases_prep_ice)'
     !---------------------------------------
@@ -436,35 +488,62 @@ module med_phases_mod
     endif
     rc = ESMF_SUCCESS
 
-    ! query the Component for its clock, importState and exportState
-    call ESMF_GridCompGet(gcomp, clock=clock, importState=importState, &
-      exportState=exportState, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    !---------------------------------------
+    ! --- Get the internal state
+    !---------------------------------------
 
-    ! Get the internal state from Component.
     nullify(is_local%wrap)
     call ESMF_GridCompGetInternalState(gcomp, is_local, rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    !---------------------------------------
+    !--- Count the number of fields outside of scalar data, if zero, then return
+    !---------------------------------------
+
+    ! Note - the scalar field has been removed from all mediator field bundles - so this is why we check if the
+    ! fieldCount is 0 and not 1 here
+
+    call ESMF_FieldBundleGet(is_local%wrap%FBExp(compice), fieldCount=ncnt, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    if (ncnt == 0) then
+       if (dbug_flag > 5) then
+          call ESMF_LogWrite(trim(subname)//": only scalar data is present in FBexp(compice), returning", &
+               ESMF_LOGMSG_INFO, rc=dbrc)
+       endif
+       RETURN
+    end if
+
+    !---------------------------------------
+    !--- Get the current time from the clock
+    !---------------------------------------
+
+    call ESMF_GridCompGet(gcomp, clock=clock)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
     call ESMF_ClockGet(clock,currtime=time,rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
     call ESMF_TimeGet(time,timestring=timestr)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     if (dbug_flag > 1) then
       call ESMF_LogWrite(trim(subname)//": time = "//trim(timestr), ESMF_LOGMSG_INFO, rc=dbrc)
     endif
 
     call ESMF_ClockPrint(clock, options="currTime", &
-      preString="-------->"//trim(subname)//" mediating for: ", rc=rc)
+         preString="-------->"//trim(subname)//" mediating for: ", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !---------------------------------------
-    !--- mapping
+    !--- map to create FBimp(:,compice)
     !---------------------------------------
 
+    n2 = compice
     do n1 = 1,ncomps
-      n2 = compice
       if (is_local%wrap%med_coupling_active(n1,n2)) then
         call shr_nuopc_methods_FB_reset(is_local%wrap%FBImp(n1,n2), value=czero, rc=rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
         call shr_nuopc_methods_FB_Regrid(&
            fldsFr(n1), is_local%wrap%FBImp(n1,n1), is_local%wrap%FBImp(n1,n2), &
            consfmap=is_local%wrap%RH(n1,n2,mapconsf), &
@@ -473,6 +552,7 @@ module med_phases_mod
            patchmap=is_local%wrap%RH(n1,n2,mappatch), &
            string=trim(compname(n1))//'2'//trim(compname(n2)), rc=rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
         if (dbug_flag > 1) then
            call shr_nuopc_methods_FB_diagnose(is_local%wrap%FBImp(n1,n2), &
                 string=trim(subname)//' FBImp('//trim(compname(n1))//','//trim(compname(n2))//') ', rc=rc)
@@ -534,7 +614,7 @@ module med_phases_mod
     type(ESMF_Field)            :: field
     type(InternalState)         :: is_local
     real(ESMF_KIND_R8), pointer :: dataPtr1(:),dataPtr2(:),dataPtr3(:),dataPtr4(:)
-    integer                     :: i,j,n,n1,n2
+    integer                     :: i,j,n,n1,n2,ncnt
     logical,save                :: first_call = .true.
     character(len=*),parameter  :: subname='(med_phases_prep_lnd)'
     !---------------------------------------
@@ -544,42 +624,72 @@ module med_phases_mod
     endif
     rc = ESMF_SUCCESS
 
-    ! query the Component for its clock, importState and exportState
-    call ESMF_GridCompGet(gcomp, clock=clock, importState=importState, &
-      exportState=exportState, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    !---------------------------------------
+    ! --- Get the internal state
+    !---------------------------------------
 
-    ! Get the internal state from Component.
     nullify(is_local%wrap)
     call ESMF_GridCompGetInternalState(gcomp, is_local, rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    !---------------------------------------
+    !--- Count the number of fields outside of scalar data, if zero, then return
+    !---------------------------------------
+
+    ! Note - the scalar field has been removed from all mediator field bundles - so this is why we check if the
+    ! fieldCount is 0 and not 1 here
+
+    call ESMF_FieldBundleGet(is_local%wrap%FBExp(complnd), fieldCount=ncnt, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    if (ncnt == 0) then
+       if (dbug_flag > 5) then
+          call ESMF_LogWrite(trim(subname)//": only scalar data is present in FBexp(complnd), returning", &
+               ESMF_LOGMSG_INFO, rc=dbrc)
+       endif
+       RETURN
+    end if
+
+    !---------------------------------------
+    !--- Get the current time from the clock
+    !---------------------------------------
+
+    call ESMF_GridCompGet(gcomp, clock=clock)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
     call ESMF_ClockGet(clock,currtime=time,rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
     call ESMF_TimeGet(time,timestring=timestr)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     if (dbug_flag > 1) then
       call ESMF_LogWrite(trim(subname)//": time = "//trim(timestr), ESMF_LOGMSG_INFO, rc=dbrc)
     endif
 
     call ESMF_ClockPrint(clock, options="currTime", &
-      preString="-------->"//trim(subname)//" mediating for: ", rc=rc)
+         preString="-------->"//trim(subname)//" mediating for: ", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !---------------------------------------
-    !--- mapping
+    !--- map to create FBimp(:,complnd)
     !---------------------------------------
 
+    n2 = complnd
     do n1 = 1,ncomps
-      n2 = complnd
       if (is_local%wrap%med_coupling_active(n1,n2)) then
         call shr_nuopc_methods_FB_reset(is_local%wrap%FBImp(n1,n2), value=czero, rc=rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-        call shr_nuopc_methods_FB_Regrid(fldsFr(n1), is_local%wrap%FBImp(n1,n1), is_local%wrap%FBImp(n1,n2), &
-           consfmap=is_local%wrap%RH(n1,n2,mapconsf), &
-           consdmap=is_local%wrap%RH(n1,n2,mapconsd), &
-           bilnrmap=is_local%wrap%RH(n1,n2,mapbilnr), &
-           patchmap=is_local%wrap%RH(n1,n2,mappatch), &
-           string=trim(compname(n1))//'2'//trim(compname(n2)), rc=rc)
+
+        call shr_nuopc_methods_FB_Regrid(fldsFr(n1), &
+             is_local%wrap%FBImp(n1,n1), &
+             is_local%wrap%FBImp(n1,n2), &
+             consfmap=is_local%wrap%RH(n1,n2,mapconsf), &
+             consdmap=is_local%wrap%RH(n1,n2,mapconsd), &
+             bilnrmap=is_local%wrap%RH(n1,n2,mapbilnr), &
+             patchmap=is_local%wrap%RH(n1,n2,mappatch), &
+             string=trim(compname(n1))//'2'//trim(compname(n2)), rc=rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
         if (dbug_flag > 1) then
            call shr_nuopc_methods_FB_diagnose(is_local%wrap%FBImp(n1,n2), &
                 string=trim(subname)//' FBImp('//trim(compname(n1))//','//trim(compname(n2))//') ', rc=rc)
@@ -594,6 +704,7 @@ module med_phases_mod
 
     call shr_nuopc_methods_FB_reset(is_local%wrap%FBExp(complnd), value=czero, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
     call med_merge_auto(is_local%wrap%FBExp(complnd), &
          FB1=is_local%wrap%FBImp(compatm,complnd), FB1w=is_local%wrap%FBfrac(complnd), fldw1='afrac', &
          FB2=is_local%wrap%FBImp(compglc,complnd), &
@@ -639,7 +750,7 @@ module med_phases_mod
     type(ESMF_Field)            :: field
     type(InternalState)         :: is_local
     real(ESMF_KIND_R8), pointer :: dataPtr1(:),dataPtr2(:),dataPtr3(:),dataPtr4(:)
-    integer                     :: i,j,n,n1,n2
+    integer                     :: i,j,n,n1,n2,ncnt
     logical,save                :: first_call = .true.
     character(len=*),parameter  :: subname='(med_phases_prep_rof)'
     !---------------------------------------
@@ -649,32 +760,58 @@ module med_phases_mod
     endif
     rc = ESMF_SUCCESS
 
-    ! query the Component for its clock, importState and exportState
-    call ESMF_GridCompGet(gcomp, clock=clock, importState=importState, &
-      exportState=exportState, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    !---------------------------------------
+    ! --- Get the internal state
+    !---------------------------------------
 
-    ! Get the internal state from Component.
     nullify(is_local%wrap)
     call ESMF_GridCompGetInternalState(gcomp, is_local, rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    !---------------------------------------
+    !--- Count the number of fields outside of scalar data, if zero, then return
+    !---------------------------------------
+
+    ! Note - the scalar field has been removed from all mediator field bundles - so this is why we check if the
+    ! fieldCount is 0 and not 1 here
+
+    call ESMF_FieldBundleGet(is_local%wrap%FBExp(comprof), fieldCount=ncnt, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    if (ncnt == 0) then
+       if (dbug_flag > 5) then
+          call ESMF_LogWrite(trim(subname)//": only scalar data is present in FBexp(comprof), returning", &
+               ESMF_LOGMSG_INFO, rc=dbrc)
+       endif
+       RETURN
+    end if
+
+    !---------------------------------------
+    !--- Get the current time from the clock
+    !---------------------------------------
+
+    call ESMF_GridCompGet(gcomp, clock=clock)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
     call ESMF_ClockGet(clock,currtime=time,rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
     call ESMF_TimeGet(time,timestring=timestr)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     if (dbug_flag > 1) then
       call ESMF_LogWrite(trim(subname)//": time = "//trim(timestr), ESMF_LOGMSG_INFO, rc=dbrc)
     endif
 
     call ESMF_ClockPrint(clock, options="currTime", &
-      preString="-------->"//trim(subname)//" mediating for: ", rc=rc)
+         preString="-------->"//trim(subname)//" mediating for: ", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !---------------------------------------
-    !--- mapping
+    !--- map to create FBimp(:,comprof)
     !---------------------------------------
 
+    n2 = comprof
     do n1 = 1,ncomps
-      n2 = comprof
       if (is_local%wrap%med_coupling_active(n1,n2)) then
         call shr_nuopc_methods_FB_reset(is_local%wrap%FBImp(n1,n2), value=czero, rc=rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -747,7 +884,7 @@ module med_phases_mod
     type(ESMF_Field)            :: field
     type(InternalState)         :: is_local
     real(ESMF_KIND_R8), pointer :: dataPtr1(:),dataPtr2(:),dataPtr3(:),dataPtr4(:)
-    integer                     :: i,j,n,n1,n2
+    integer                     :: i,j,n,n1,n2,ncnt
     logical,save                :: first_call = .true.
     character(len=*),parameter  :: subname='(med_phases_prep_wav)'
     !---------------------------------------
@@ -757,35 +894,62 @@ module med_phases_mod
     endif
     rc = ESMF_SUCCESS
 
-    ! query the Component for its clock, importState and exportState
-    call ESMF_GridCompGet(gcomp, clock=clock, importState=importState, &
-      exportState=exportState, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    !---------------------------------------
+    ! --- Get the internal state
+    !---------------------------------------
 
-    ! Get the internal state from Component.
     nullify(is_local%wrap)
     call ESMF_GridCompGetInternalState(gcomp, is_local, rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    !---------------------------------------
+    !--- Count the number of fields outside of scalar data, if zero, then return
+    !---------------------------------------
+
+    ! Note - the scalar field has been removed from all mediator field bundles - so this is why we check if the
+    ! fieldCount is 0 and not 1 here
+
+    call ESMF_FieldBundleGet(is_local%wrap%FBExp(compwav), fieldCount=ncnt, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    if (ncnt == 0) then
+       if (dbug_flag > 5) then
+          call ESMF_LogWrite(trim(subname)//": only scalar data is present in FBexp(compwav), returning", &
+               ESMF_LOGMSG_INFO, rc=dbrc)
+       endif
+       RETURN
+    end if
+
+    !---------------------------------------
+    !--- Get the current time from the clock
+    !---------------------------------------
+
+    call ESMF_GridCompGet(gcomp, clock=clock)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
     call ESMF_ClockGet(clock,currtime=time,rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
     call ESMF_TimeGet(time,timestring=timestr)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     if (dbug_flag > 1) then
       call ESMF_LogWrite(trim(subname)//": time = "//trim(timestr), ESMF_LOGMSG_INFO, rc=dbrc)
     endif
 
     call ESMF_ClockPrint(clock, options="currTime", &
-      preString="-------->"//trim(subname)//" mediating for: ", rc=rc)
+         preString="-------->"//trim(subname)//" mediating for: ", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !---------------------------------------
-    !--- mapping
+    !--- map to create FBimp(:,compwav)
     !---------------------------------------
 
+    n2 = compwav
     do n1 = 1,ncomps
-      n2 = compwav
       if (is_local%wrap%med_coupling_active(n1,n2)) then
         call shr_nuopc_methods_FB_reset(is_local%wrap%FBImp(n1,n2), value=czero, rc=rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
         call shr_nuopc_methods_FB_Regrid(fldsFr(n1), is_local%wrap%FBImp(n1,n1), is_local%wrap%FBImp(n1,n2), &
            consfmap=is_local%wrap%RH(n1,n2,mapconsf), &
            consdmap=is_local%wrap%RH(n1,n2,mapconsd), &
@@ -793,6 +957,7 @@ module med_phases_mod
            patchmap=is_local%wrap%RH(n1,n2,mappatch), &
            string=trim(compname(n1))//'2'//trim(compname(n2)), rc=rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
         if (dbug_flag > 1) then
            call shr_nuopc_methods_FB_diagnose(is_local%wrap%FBImp(n1,n2), &
                 string=trim(subname)//' FBImp('//trim(compname(n1))//','//trim(compname(n2))//') ', rc=rc)
@@ -852,7 +1017,7 @@ module med_phases_mod
     type(ESMF_Field)            :: field
     type(InternalState)         :: is_local
     real(ESMF_KIND_R8), pointer :: dataPtr1(:),dataPtr2(:),dataPtr3(:),dataPtr4(:)
-    integer                     :: i,j,n,n1,n2
+    integer                     :: i,j,n,n1,n2,ncnt
     logical,save                :: first_call = .true.
     character(len=*),parameter  :: subname='(med_phases_prep_glc)'
     !---------------------------------------
@@ -862,35 +1027,62 @@ module med_phases_mod
     endif
     rc = ESMF_SUCCESS
 
-    ! query the Component for its clock, importState and exportState
-    call ESMF_GridCompGet(gcomp, clock=clock, importState=importState, &
-      exportState=exportState, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    !---------------------------------------
+    ! --- Get the internal state
+    !---------------------------------------
 
-    ! Get the internal state from Component.
     nullify(is_local%wrap)
     call ESMF_GridCompGetInternalState(gcomp, is_local, rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    !---------------------------------------
+    !--- Count the number of fields outside of scalar data, if zero, then return
+    !---------------------------------------
+
+    ! Note - the scalar field has been removed from all mediator field bundles - so this is why we check if the
+    ! fieldCount is 0 and not 1 here
+
+    call ESMF_FieldBundleGet(is_local%wrap%FBExp(compglc), fieldCount=ncnt, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    if (ncnt == 0) then
+       if (dbug_flag > 5) then
+          call ESMF_LogWrite(trim(subname)//": only scalar data is present in FBexp(compglc), returning", &
+               ESMF_LOGMSG_INFO, rc=dbrc)
+       endif
+       RETURN
+    end if
+
+    !---------------------------------------
+    !--- Get the current time from the clock
+    !---------------------------------------
+
+    call ESMF_GridCompGet(gcomp, clock=clock)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
     call ESMF_ClockGet(clock,currtime=time,rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
     call ESMF_TimeGet(time,timestring=timestr)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     if (dbug_flag > 1) then
       call ESMF_LogWrite(trim(subname)//": time = "//trim(timestr), ESMF_LOGMSG_INFO, rc=dbrc)
     endif
 
     call ESMF_ClockPrint(clock, options="currTime", &
-      preString="-------->"//trim(subname)//" mediating for: ", rc=rc)
+         preString="-------->"//trim(subname)//" mediating for: ", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !---------------------------------------
     !--- mapping
     !---------------------------------------
 
+    n2 = compglc
     do n1 = 1,ncomps
-      n2 = compglc
       if (is_local%wrap%med_coupling_active(n1,n2)) then
         call shr_nuopc_methods_FB_reset(is_local%wrap%FBImp(n1,n2), value=czero, rc=rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
         call shr_nuopc_methods_FB_Regrid(fldsFr(n1), is_local%wrap%FBImp(n1,n1), is_local%wrap%FBImp(n1,n2), &
            consfmap=is_local%wrap%RH(n1,n2,mapconsf), &
            consdmap=is_local%wrap%RH(n1,n2,mapconsd), &
@@ -898,6 +1090,7 @@ module med_phases_mod
            patchmap=is_local%wrap%RH(n1,n2,mappatch), &
            string=trim(compname(n1))//'2'//trim(compname(n2)), rc=rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
         if (dbug_flag > 1) then
            call shr_nuopc_methods_FB_diagnose(is_local%wrap%FBImp(n1,n2), &
                 string=trim(subname)//' FBImp('//trim(compname(n1))//','//trim(compname(n2))//') ', rc=rc)
@@ -946,6 +1139,8 @@ module med_phases_mod
     type(ESMF_GridComp)  :: gcomp
     integer, intent(out) :: rc
 
+    ! Prepares the OCN import Fields.
+
     ! local variables
     type(ESMF_Clock)            :: clock
     type(ESMF_Time)             :: time
@@ -953,31 +1148,56 @@ module med_phases_mod
     type(ESMF_State)            :: importState, exportState
     type(ESMF_StateItem_Flag)   :: itemType
     type(InternalState)         :: is_local
-    integer                     :: i,j,n,n1,n2
+    integer                     :: i,j,n,n1,n2,ncnt
     character(ESMF_MAXSTR)      :: fieldname1(10),fieldname2(10),fieldname3(10)
     real(ESMF_KIND_R8), pointer :: dataPtr1(:),dataPtr2(:),dataPtr3(:)
     real(ESMF_KIND_R8), pointer :: atmwgt(:),icewgt(:),customwgt(:)
     logical                     :: checkOK, checkOK1, checkOK2
     logical,save                :: first_call = .true.
     character(len=*),parameter  :: subname='(med_phases_prep_ocn)'
+    !---------------------------------------
 
     if (dbug_flag > 5) then
       call ESMF_LogWrite(trim(subname)//": called", ESMF_LOGMSG_INFO, rc=dbrc)
     endif
     rc = ESMF_SUCCESS
 
-    ! query the Component for its clock, importState and exportState
-    call ESMF_GridCompGet(gcomp, clock=clock, importState=importState, &
-      exportState=exportState, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    !---------------------------------------
+    ! --- Get the internal state
+    !---------------------------------------
 
-    ! Get the internal state from Component.
     nullify(is_local%wrap)
     call ESMF_GridCompGetInternalState(gcomp, is_local, rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    !---------------------------------------
+    !--- Count the number of fields outside of scalar data, if zero, then return
+    !---------------------------------------
+
+    ! Note - the scalar field has been removed from all mediator field bundles - so this is why we check if the
+    ! fieldCount is 0 and not 1 here
+
+    call ESMF_FieldBundleGet(is_local%wrap%FBExp(compocn), fieldCount=ncnt, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    if (ncnt == 0) then
+       if (dbug_flag > 5) then
+          call ESMF_LogWrite(trim(subname)//": only scalar data is present in FBexp(compocn), returning", &
+               ESMF_LOGMSG_INFO, rc=dbrc)
+       endif
+       RETURN
+    end if
+
+    !---------------------------------------
+    !--- Get the current time from the clock
+    !---------------------------------------
+
+    call ESMF_GridCompGet(gcomp, clock=clock)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
     call ESMF_ClockGet(clock,currtime=time,rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
     call ESMF_TimeGet(time,timestring=timestr)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     if (dbug_flag > 1) then
@@ -985,7 +1205,7 @@ module med_phases_mod
     endif
 
     call ESMF_ClockPrint(clock, options="currTime", &
-      preString="-------->"//trim(subname)//" mediating for: ", rc=rc)
+         preString="-------->"//trim(subname)//" mediating for: ", rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !---------------------------------------
@@ -1049,11 +1269,12 @@ module med_phases_mod
   end subroutine med_phases_prep_ocn
 
   !-----------------------------------------------------------------------------
-  !-----------------------------------------------------------------------------
 
   subroutine med_phases_accum_fast(gcomp, rc)
     type(ESMF_GridComp)  :: gcomp
     integer, intent(out) :: rc
+
+    ! Carry out fast accumulation for the ocean
 
     ! local variables
     type(ESMF_Clock)            :: clock
@@ -1061,7 +1282,7 @@ module med_phases_mod
     character(len=64)           :: timestr
     type(ESMF_State)            :: importState, exportState
     type(InternalState)         :: is_local
-    integer                     :: i,j,n,n1,n2
+    integer                     :: i,j,n,n1,n2,ncnt
     logical,save                :: first_call = .true.
     character(len=*),parameter :: subname='(med_phases_accum_fast)'
     !---------------------------------------
@@ -1071,18 +1292,42 @@ module med_phases_mod
     endif
     rc = ESMF_SUCCESS
 
-    ! query the Component for its clock, importState and exportState
-    call ESMF_GridCompGet(gcomp, clock=clock, importState=importState, &
-      exportState=exportState, rc=rc)
-    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    !---------------------------------------
+    ! --- Get the internal state
+    !---------------------------------------
 
-    ! Get the internal state from Component.
     nullify(is_local%wrap)
     call ESMF_GridCompGetInternalState(gcomp, is_local, rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    !---------------------------------------
+    !--- Count the number of fields outside of scalar data, if zero, then return
+    !---------------------------------------
+
+    ! Note - the scalar field has been removed from all mediator field bundles - so this is why we check if the
+    ! fieldCount is 0 and not 1 here
+
+    call ESMF_FieldBundleGet(is_local%wrap%FBExp(compocn), fieldCount=ncnt, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    if (ncnt == 0) then
+       if (dbug_flag > 5) then
+          call ESMF_LogWrite(trim(subname)//": only scalar data is present in FBexp(compocn), returning", &
+               ESMF_LOGMSG_INFO, rc=dbrc)
+       endif
+       RETURN
+    end if
+
+    !---------------------------------------
+    !--- Get the current time from the clock
+    !---------------------------------------
+
+    call ESMF_GridCompGet(gcomp, clock=clock)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
     call ESMF_ClockGet(clock,currtime=time,rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
     call ESMF_TimeGet(time,timestring=timestr)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     if (dbug_flag > 1) then
@@ -1098,10 +1343,9 @@ module med_phases_mod
     !--- coupling to the ocean to the ocean grid
     !---------------------------------------
 
+    n2 = compocn
     do n1 = 1,ncomps
-      n2 = compocn
       if (is_local%wrap%med_coupling_active(n1,n2)) then
-
         call shr_nuopc_methods_FB_reset(is_local%wrap%FBImp(n1,n2), value=czero, rc=rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -1144,7 +1388,6 @@ module med_phases_mod
     !---------------------------------------
 
 #if (1 == 0)
-
     ! atm and ice fraction
     call shr_nuopc_methods_FB_GetFldPtr(is_local%wrap%FBImp(compice,compocn), trim(ice_fraction_name), icewgt, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -1185,7 +1428,6 @@ module med_phases_mod
             string=trim(subname)//' FB4ocn_AFmrg ', rc=rc)
       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
     endif
-
 #endif
 
     !---------------------------------------
@@ -1218,14 +1460,16 @@ module med_phases_mod
 
   subroutine med_phases_map_frac(FBin, fldin, FBout, fldout, RH, iarr, iarr_r, rc)
 
-    type(ESMF_FieldBundle) :: FBin            ! input FB
-    character(len=*)       :: fldin           ! input fieldname
-    type(ESMF_FieldBundle) :: FBout           ! output FB
-    character(len=*)       :: fldout          ! output fieldname
-    type(ESMF_RouteHandle) :: RH              ! RH
-    real(ESMF_KIND_R8), pointer :: iarr(:)    ! mapped field
-    real(ESMF_KIND_R8), pointer :: iarr_r(:)  ! reciprical of mapped field
-    integer :: rc                             ! return code
+    ! Map field bundles with appropriate fraction weighting
+
+    type(ESMF_FieldBundle)      :: FBin      ! input FB
+    character(len=*)            :: fldin     ! input fieldname
+    type(ESMF_FieldBundle)      :: FBout     ! output FB
+    character(len=*)            :: fldout    ! output fieldname
+    type(ESMF_RouteHandle)      :: RH        ! RH
+    real(ESMF_KIND_R8), pointer :: iarr(:)   ! mapped field
+    real(ESMF_KIND_R8), pointer :: iarr_r(:) ! reciprical of mapped field
+    integer                     :: rc        ! return code
     !---------------------------------------
 
     ! local
@@ -1269,9 +1513,8 @@ module med_phases_mod
   !-----------------------------------------------------------------------------
 
   subroutine med_phases_atmocn_init(gcomp, rc)
-    use shr_kind_mod  , only : CL=>shr_kind_cl
+    ! Initialize atm/ocn module variables
 
-    ! arguments
     type(ESMF_GridComp)  :: gcomp
     integer, intent(out) :: rc
 

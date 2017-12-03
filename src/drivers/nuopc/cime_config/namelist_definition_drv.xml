@@ -885,18 +885,6 @@
     </values>
   </entry>
 
-  <entry id="shr_map_dopole">
-    <type>logical</type>
-    <category>mapping</category>
-    <group>DRIVER_info_attributes</group>
-    <desc>
-      invoke pole averaging corrections in shr_map_mod weights generation (default: true)
-    </desc>
-    <values>
-      <value>.true.</value>
-    </values>
-  </entry>
-
   <entry id="vect_map" modify_via_xml="VECT_MAP">
     <type>char</type>
     <category>mapping</category>

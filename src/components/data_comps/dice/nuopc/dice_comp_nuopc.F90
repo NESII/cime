@@ -346,7 +346,6 @@ module dice_comp_nuopc
     integer, intent(out) :: rc
 
     ! local variables
-    integer(IN)            :: phase
     character(ESMF_MAXSTR) :: convCIM, purpComp
     type(ESMF_Grid)        :: Egrid
     type(ESMF_Mesh)        :: Emesh
@@ -381,26 +380,6 @@ module dice_comp_nuopc
     call shr_file_getLogUnit (shrlogunit)
     call shr_file_getLogLevel(shrloglev)
     call shr_file_setLogUnit (logunit)
-
-    !----------------------------------------------------------------------------
-    ! Read input namelists and set present and prognostic flags
-    !----------------------------------------------------------------------------
-
-    phase = 1  !TODO - this is hard-wired for now and needs to be generalized
-
-    if (phase .ne. 1) then
-       if (ice_prognostic) then
-          do n = 1,fldsToIce%num
-             connected = NUOPC_IsConnected(importState, fieldName=fldsToIce%shortname(n))
-             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) call shr_sys_abort()
-             if (.not. connected) then
-                call shr_sys_abort("Ice prognostic .true. requires connection for " // trim(fldsToIce%shortname(n)))
-             end if
-          end do
-          call shr_nuopc_grid_StateToArray(importState, x2d%rattr, seq_flds_x2i_fields, grid_option, rc=rc)
-          if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
-       end if
-    endif
 
     !--------------------------------
     ! call dice init routine

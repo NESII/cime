@@ -1539,30 +1539,18 @@ contains
   end function seq_timemgr_pause_active
 
   !===============================================================================
-  !===============================================================================
-  ! !IROUTINE: seq_timemgr_pause_component_index -- return an index for a component
-  !
-  ! !DESCRIPTION:
-  !
-  !     Look up a component's internal index for faster processing
-  !
-  ! !INTERFACE: ------------------------------------------------------------------
-
   integer function seq_timemgr_pause_component_index(component_name)
 
-    !    !INPUT/OUTPUT PARAMETERS:
+    ! !DESCRIPTION: Look up a component's internal index for faster processing
 
+    ! !INPUT/OUTPUT PARAMETERS:
     character(len=*), intent(IN) :: component_name
-
-    !EOP
 
     !----- local -----
     integer                     :: ind
     character(len=*), parameter :: subname = '(seq_timemgr_pause_component_index) '
+    !-------------------------------------------------------------------------------
 
-    !-------------------------------------------------------------------------------
-    ! Notes:
-    !-------------------------------------------------------------------------------
     seq_timemgr_pause_component_index = 0
     do ind = 1, max_clocks
        if (trim(component_name) == trim(seq_timemgr_clocks(ind))) then
@@ -1582,28 +1570,15 @@ contains
   end function seq_timemgr_pause_component_index
 
   !===============================================================================
-  !===============================================================================
-  ! !IROUTINE: seq_timemgr_pause_component_active -- Check if component paused
-  !
-  ! !DESCRIPTION:
-  !
-  !     Return .true. if component is active in driver pause
-  !
-  ! !INTERFACE: ------------------------------------------------------------------
-
   logical function seq_timemgr_pause_component_active(component_index)
 
-    !    !INPUT/OUTPUT PARAMETERS:
+    ! !DESCRIPTION: Return .true. if component is active in driver pause
 
+    ! !INPUT/OUTPUT PARAMETERS:
     integer, intent(IN) :: component_index
-
-    !EOP
 
     !----- local -----
     character(len=*), parameter :: subname = '(seq_timemgr_pause_component_active) '
-
-    !-------------------------------------------------------------------------------
-    ! Notes:
     !-------------------------------------------------------------------------------
 
     if ((component_index < 1) .or. (component_index > max_clocks)) then
@@ -1614,23 +1589,14 @@ contains
   end function seq_timemgr_pause_component_active
 
   !===============================================================================
-  !===============================================================================
-  ! !IROUTINE: seq_timemgr_ETimeInit -- Create ESMF_Time object based on YMD values
-  !
-  ! !DESCRIPTION:
-  !
-  !     Create the ESMF_Time object corresponding to the given input time, given in
-  !  YMD (Year Month Day) and TOD (Time-of-day) format.
-  ! Set the time by an integer as YYYYMMDD and integer seconds in the day
-  !
-  ! !INTERFACE: ------------------------------------------------------------------
-
   subroutine seq_timemgr_ETimeInit( ETime, ymd, tod, desc )
 
+    ! !DESCRIPTION: Create the ESMF_Time object corresponding to the given input time, given in
+    !               YMD (Year Month Day) and TOD (Time-of-day) format.
+    !               Set the time by an integer as YYYYMMDD and integer seconds in the day
     implicit none
 
     ! !INPUT/OUTPUT PARAMETERS:
-
     type(ESMF_Time) , intent(inout) :: ETime     ! Time
     integer         , intent(in)    :: ymd       ! Year, month, day YYYYMMDD
     integer         , intent(in), optional    :: tod       ! Time of day in seconds
@@ -1642,9 +1608,6 @@ contains
     integer :: ltod                  ! local tod
     character(SHR_KIND_CL)  :: ldesc ! local desc
     integer :: rc                    ! return code
-
-    !-------------------------------------------------------------------------------
-    ! Notes:
     !-------------------------------------------------------------------------------
 
     ltod = 0
@@ -1673,21 +1636,12 @@ contains
   end subroutine seq_timemgr_ETimeInit
 
   !===============================================================================
-  !===============================================================================
-  ! !IROUTINE: seq_timemgr_ETimeGet -- Get the date in YYYYMMDD from from ESMF Time
-  !
-  ! !DESCRIPTION:
-  !
-  !     Get the date in YYYYMMDD format from a ESMF time object.
-  !
-  ! !INTERFACE: ------------------------------------------------------------------
-
   subroutine seq_timemgr_ETimeGet( ETime, offset, ymd, tod )
 
+    ! !DESCRIPTION: Get the date in YYYYMMDD format from a ESMF time object.
     implicit none
 
     ! !INPUT/OUTPUT PARAMETERS:
-
     type(ESMF_Time),   intent(IN)  :: ETime   ! Input ESMF time
     integer, optional, intent(IN)  :: offset  ! Offset from input time (sec)
     integer, optional, intent(OUT) :: ymd     ! date of day
@@ -1702,9 +1656,6 @@ contains
     integer                 :: day      ! Day in month
     integer                 :: sec      ! Day in month
     integer                 :: rc       ! Return code
-
-    !-------------------------------------------------------------------------------
-    ! Notes:
     !-------------------------------------------------------------------------------
 
     ETimeAdd = ETime
@@ -1793,7 +1744,6 @@ contains
     implicit none
 
     ! !INPUT/OUTPUT PARAMETERS:
-
     type(ESMF_Clock), intent(IN) :: Eclock   ! Input clock to compare
     integer,          intent(IN) :: ymd     ! Date (YYYYMMDD)
     integer,          intent(IN) :: tod     ! Time of day (sec)

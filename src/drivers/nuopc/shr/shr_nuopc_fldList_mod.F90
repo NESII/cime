@@ -457,14 +457,18 @@ contains
 
     ! create a DistGrid with a single index space element, which gets mapped
     ! onto DE 0.
+
     distgrid = ESMF_DistGridCreate(minIndex=(/1/), maxIndex=(/1/), rc=rc)
     if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__)) return
+
     grid = ESMF_GridCreate(distgrid, rc=rc)
     if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__)) return
-    field = ESMF_FieldCreate(name=trim(seq_flds_scalar_name), grid=grid, &
-      typekind=ESMF_TYPEKIND_R8, &
-      ungriddedLBound=(/1/), ungriddedUBound=(/seq_flds_scalar_num/), & ! num of scalar values
-      rc=rc)
+
+    field = ESMF_FieldCreate(name=trim(seq_flds_scalar_name), &
+         grid=grid, &
+         typekind=ESMF_TYPEKIND_R8, &
+         ungriddedLBound=(/1/), ungriddedUBound=(/seq_flds_scalar_num/), & ! num of scalar values
+         rc=rc)
     if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__)) return
 
   end subroutine shr_nuopc_fldList_SetScalarField
