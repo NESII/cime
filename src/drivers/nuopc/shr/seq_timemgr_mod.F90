@@ -16,11 +16,7 @@ module seq_timemgr_mod
 
   private    ! default private
 
-  ! ! PUBLIC TYPES:
-
-  public :: seq_timemgr_type         ! Wrapped clock object
-
-  ! ! PUBLIC MEMBER FUNCTIONS:
+  ! MEMBER FUNCTIONS:
 
   ! --- Clock object methods --------------------------------------------------
   public :: seq_timemgr_clockInit              ! Setup the sync clock
@@ -43,17 +39,21 @@ module seq_timemgr_mod
   public :: seq_timemgr_pause_component_index  ! Index of named component
   public :: seq_timemgr_pause_component_active ! .true. is comp should pause
 
-  ! ! PRIVATE MEMBER FUNCTIONS:
-
   public :: seq_timemgr_clockPrint ! Print sync clock information
+
   private:: seq_timemgr_alarmGet
   private:: seq_timemgr_alarmInit
   private:: seq_timemgr_EClockInit
   private:: seq_timemgr_ESMFDebug
   private:: seq_timemgr_ESMFCodeCheck
 
-  ! ! PUBLIC PARAMETERS:
+  ! PARAMETERS:
 
+  ! Calendar options
+  character(SHR_KIND_CL) ,public ,parameter :: seq_timemgr_noleap      = shr_cal_noleap
+  character(SHR_KIND_CL) ,public ,parameter :: seq_timemgr_gregorian   = shr_cal_gregorian
+
+  ! History output types
   integer(SHR_KIND_IN)   ,public            :: seq_timemgr_histavg_type
   integer(SHR_KIND_IN)   ,public ,parameter :: seq_timemgr_type_other  = -1
   integer(SHR_KIND_IN)   ,public ,parameter :: seq_timemgr_type_never  =  1
@@ -61,11 +61,8 @@ module seq_timemgr_mod
   integer(SHR_KIND_IN)   ,public ,parameter :: seq_timemgr_type_nday   =  3
   integer(SHR_KIND_IN)   ,public ,parameter :: seq_timemgr_type_nmonth =  4
   integer(SHR_KIND_IN)   ,public ,parameter :: seq_timemgr_type_nyear  =  5
-  character(SHR_KIND_CL) ,public ,parameter :: seq_timemgr_noleap      = shr_cal_noleap
-  character(SHR_KIND_CL) ,public ,parameter :: seq_timemgr_gregorian   = shr_cal_gregorian
 
-  ! ! PRIVATE PARAMETERS:
-
+  ! Clock and alarm options
   character(len=*), private, parameter :: &
        seq_timemgr_optNONE           = "none"      , &
        seq_timemgr_optNever          = "never"     , &
@@ -90,6 +87,7 @@ module seq_timemgr_mod
        seq_timemgr_optEnd            = "end"       , &
        seq_timemgr_optGLCCouplingPeriod = "glc_coupling_period"
 
+  ! Clock numbers
   integer(SHR_KIND_IN),private,parameter :: &
        seq_timemgr_nclock_drv  = 1, &
        seq_timemgr_nclock_atm  = 2, &
@@ -102,7 +100,8 @@ module seq_timemgr_mod
        seq_timemgr_nclock_esp  = 9, &
        max_clocks              = 9
 
-  character(len=*),public,parameter :: &
+  ! Clock names
+  character(len=*), public,parameter :: &
        seq_timemgr_clock_drv  = 'seq_timemgr_clock_drv' , &
        seq_timemgr_clock_atm  = 'seq_timemgr_clock_atm' , &
        seq_timemgr_clock_lnd  = 'seq_timemgr_clock_lnd' , &
@@ -113,12 +112,13 @@ module seq_timemgr_mod
        seq_timemgr_clock_rof  = 'seq_timemgr_clock_rof' , &
        seq_timemgr_clock_esp  = 'seq_timemgr_clock_esp'
 
-  character(len=8),private,parameter :: seq_timemgr_clocks(max_clocks) = &
+  ! Array of clock names
+  character(len=8), private,parameter :: seq_timemgr_clocks(max_clocks) = &
        (/'drv     ','atm     ','lnd     ','ocn     ', &
          'ice     ','glc     ','wav     ','rof     ','esp     '/)
 
-  ! Alarms on both component clocks and driver clock
-  integer(SHR_KIND_IN),private,parameter :: &
+  ! Alarm numbers
+  integer(SHR_KIND_IN), private,parameter :: &
        seq_timemgr_nalarm_restart    = 1 , & ! driver and component clock alarm
        seq_timemgr_nalarm_stop       = 2 , & ! driver and component clock alarm
        seq_timemgr_nalarm_datestop   = 3 , & ! driver and component clock alarm
@@ -129,7 +129,8 @@ module seq_timemgr_mod
        seq_timemgr_nalarm_barrier    = 8 , & ! driver and component clock alarm
        max_alarms = seq_timemgr_nalarm_barrier
 
-  character(len=*),public,parameter :: &
+  ! Alarm names
+  character(len=*), public,parameter :: &
        seq_timemgr_alarm_restart    = 'seq_timemgr_alarm_restart ', &
        seq_timemgr_alarm_stop       = 'seq_timemgr_alarm_stop    ', &
        seq_timemgr_alarm_datestop   = 'seq_timemgr_alarm_datestop', &
@@ -142,33 +143,35 @@ module seq_timemgr_mod
   ! Active pause - resume components
   logical, private :: pause_active(max_clocks) = .false.
 
+  ! TYPES:
+
   type EClock_pointer     ! needed for array of pointers
      type(ESMF_Clock),pointer :: EClock => null()
   end type EClock_pointer
 
+  public :: seq_timemgr_type         ! Wrapped clock object
   type seq_timemgr_type
      private
      type(EClock_pointer) :: ECP(max_clocks)               ! ESMF clocks, array of pointers
      type(ESMF_Alarm)     :: EAlarm(max_clocks,max_alarms) ! array of clock alarms
   end type seq_timemgr_type
 
-  ! --- Private local data ----------------------------------------------------
+  ! MODULE DATA
 
-  type(seq_timemgr_type)      :: SyncClock            ! array of all clocks & alarm
-  type(ESMF_Calendar), target :: seq_timemgr_cal      ! calendar
-  character(SHR_KIND_CL)      :: seq_timemgr_calendar ! calendar string
-  integer, parameter          :: SecPerDay = 86400    ! Seconds per day
-
-  integer :: seq_timemgr_pause_sig_index  ! Index of pause comp with smallest dt
-  logical :: seq_timemgr_esp_run_on_pause ! Run ESP component on pause cycle
-  logical :: seq_timemgr_end_restart      ! write restarts at end of run?
+  type(seq_timemgr_type)      :: SyncClock                    ! array of all clocks & alarm
+  type(ESMF_Calendar), target :: seq_timemgr_cal              ! calendar
+  character(SHR_KIND_CL)      :: seq_timemgr_calendar         ! calendar string
+  integer, parameter          :: SecPerDay = 86400            ! Seconds per day
+  integer                     :: seq_timemgr_pause_sig_index  ! Index of pause comp with smallest dt
+  logical                     :: seq_timemgr_esp_run_on_pause ! Run ESP component on pause cycle
+  logical                     :: seq_timemgr_end_restart      ! write restarts at end of run?
   character(len=*) , parameter    :: u_FILE_u =  __FILE__
 
 !===============================================================================
 contains
 !===============================================================================
 
-  subroutine seq_timemgr_clockInit(driver, pioid, mpicom, &
+  subroutine seq_timemgr_clockInit(driver, mastertask, pioid, mpicom, &
        EClock_drv, EClock_atm, EClock_lnd, EClock_ocn, &
        EClock_ice, Eclock_glc, Eclock_rof, EClock_wav, Eclock_esp)
 
@@ -184,6 +187,7 @@ contains
 
     ! !INPUT/OUTPUT PARAMETERS:
     type(ESMF_GridComp),     intent(inout) :: driver
+    logical,                 intent(in)    :: mastertask
     type(file_desc_t),       intent(in)    :: pioid        ! TODO:  where is this set???
     integer,                 intent(in)    :: mpicom       ! MPI communicator
     type(ESMF_clock),target, intent(in)    :: EClock_drv   ! drv clock
@@ -212,7 +216,6 @@ contains
     logical                     :: found
     integer                     :: min_dt               ! smallest time step
     integer                     :: dtime(max_clocks)    ! time-step to use
-    integer                     :: iam                  ! pe rank
     character(SHR_KIND_CS)      :: calendar             ! Calendar type
     character(SHR_KIND_CS)      :: stop_option          ! Stop option units
     integer(SHR_KIND_IN)        :: stop_n               ! Number until stop
@@ -444,8 +447,6 @@ contains
           call seq_io_read(restart_file, pioid, curr_tod , 'seq_timemgr_curr_tod')
        endif
 
-       call mpi_comm_rank(mpicom, iam, ierr)
-
        !--- Send from CPLID ROOT to GLOBALID ROOT, use bcast as surrogate
        call shr_mpi_bcast(start_ymd, mpicom, pebcast=seq_comm_gloroot(CPLID))
        call shr_mpi_bcast(start_tod, mpicom, pebcast=seq_comm_gloroot(CPLID))
@@ -502,7 +503,7 @@ contains
     ! Print out the namelist settings
     !---------------------------------------------------------------------------
 
-    if (iam == 0) then
+    if (mastertask) then
        write(logunit,F0A) ' '
        write(logunit,F0A) trim(subname),' Clock Init Settings:'
        write(logunit,F0A) trim(subname),' calendar       = ',trim(calendar)
@@ -824,7 +825,7 @@ contains
 
     enddo
 
-    if (iam==0) then
+    if (mastertask) then
        call seq_timemgr_clockPrint(SyncClock)
     endif
 
@@ -1348,13 +1349,7 @@ contains
 
     !-------------------------------------------------------------------------------
     ! Notes: The Alarm_list is returned and only a subset of the alarms may
-    !   be initialized.  In the esmf_wrf_timemgr, numalarms is not used internally,
-    !   and the alarm pointer is valid if it's associated.  If it's not associated
-    !   the AlarmGet calls will generally return an error code.  What we really
-    !   want is to ignore the unset alarms.  So below, we have to kind of kludge
-    !   this up.  We set name=xalarm, a special value, before the AlarmGet call so
-    !   if Alarm_list(n) is not associated, the name will remain the value of
-    !   xalarm.  Then we check whether it's a valid alarm by first checking
+    !   be initialized. We check whether it's a valid alarm by first checking
     !   the name vs xalarm.  If name is not xalarm, then it must be a valid alarm
     !   and we either set found to true if we are setting all alarms or we compare
     !   the name returned to the alarm name we're looking for and only set found

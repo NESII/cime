@@ -23,7 +23,7 @@ module dice_comp_mod
   use shr_strdata_mod , only: shr_strdata_advance, shr_strdata_restWrite
   use shr_dmodel_mod  , only: shr_dmodel_gsmapcreate, shr_dmodel_rearrGGrid
   use shr_dmodel_mod  , only: shr_dmodel_translate_list, shr_dmodel_translateAV_list, shr_dmodel_translateAV
-  use seq_timemgr_mod , only: seq_timemgr_EClockGetData, seq_timemgr_RestartAlarmIsOn
+  use seq_timemgr_mod , only: seq_timemgr_EClockGetData
 
   use dice_shr_mod   , only: datamode       ! namelist input
   use dice_shr_mod   , only: decomp         ! namelist input
@@ -365,7 +365,7 @@ CONTAINS
     call dice_comp_run(EClock, x2i, i2x, &
          seq_flds_i2o_per_cat, &
          SDICE, gsmap, ggrid, mpicom, compid, my_task, master_task, &
-         inst_suffix, logunit, read_restart)
+         inst_suffix, logunit, read_restart, write_restart = .false.)
     call t_adj_detailf(-2)
 
     call t_stopf('DICE_INIT')
@@ -376,7 +376,7 @@ CONTAINS
   subroutine dice_comp_run(EClock, x2i, i2x, &
        seq_flds_i2o_per_cat, &
        SDICE, gsmap, ggrid, mpicom, compid, my_task, master_task, &
-       inst_suffix, logunit, read_restart, case_name)
+       inst_suffix, logunit, read_restart, write_restart, case_name)
 
     ! !DESCRIPTION: run method for dice model
     implicit none
@@ -396,6 +396,7 @@ CONTAINS
     character(len=*)       , intent(in)    :: inst_suffix          ! char string associated with instance
     integer(IN)            , intent(in)    :: logunit              ! logging unit number
     logical                , intent(in)    :: read_restart         ! start from restart
+    logical                , intent(in)    :: write_restart        ! restart now
     character(CL)          , intent(in), optional :: case_name     ! case name
 
     !--- local ---
@@ -411,7 +412,6 @@ CONTAINS
     real(R8)      :: cosarg            ! for setting ice temp pattern
     real(R8)      :: jday, jday0       ! elapsed day counters
     character(CS) :: calendar          ! calendar type
-    logical       :: write_restart     ! restart now
 
     character(*), parameter :: F00   = "('(dice_comp_run) ',8a)"
     character(*), parameter :: F04   = "('(dice_comp_run) ',2a,2i8,'s')"
@@ -421,13 +421,10 @@ CONTAINS
     call t_startf('DICE_RUN')
 
     call t_startf('dice_run1')
-
     call seq_timemgr_EClockGetData( EClock, curr_ymd=CurrentYMD, curr_tod=CurrentTOD)
     call seq_timemgr_EClockGetData( EClock, curr_yr=yy, curr_mon=mm, curr_day=dd)
     call seq_timemgr_EClockGetData( EClock, dtime=idt, calendar=calendar)
     dt = idt * 1.0_r8
-    write_restart = seq_timemgr_RestartAlarmIsOn(EClock)
-
     call t_stopf('dice_run1')
 
     !--------------------

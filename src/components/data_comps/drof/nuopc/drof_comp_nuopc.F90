@@ -73,6 +73,8 @@ module drof_comp_nuopc
   logical                    :: rofice_present            ! flag
   logical                    :: flood_present             ! flag
   logical                    :: unpack_import
+  logical                    :: read_restart              ! start from restart
+  character(CL)              :: case_name                 ! case name
   integer                    :: dbrc
   integer, parameter         :: dbug = 10
   character(len=*),parameter :: grid_option = "mesh"      ! grid_de, grid_arb, grid_reg, mesh
@@ -337,7 +339,6 @@ module drof_comp_nuopc
     integer, intent(out) :: rc
 
     ! local variables
-    integer(IN)            :: phase
     character(ESMF_MAXSTR) :: convCIM, purpComp
     type(ESMF_Grid)        :: Egrid
     type(ESMF_Mesh)        :: Emesh
@@ -347,7 +348,6 @@ module drof_comp_nuopc
     character(CL)          :: cvalue
     integer(IN)            :: shrlogunit                ! original log unit
     integer(IN)            :: shrloglev                 ! original log level
-    logical                :: read_restart              ! start from restart
     integer(IN)            :: ierr                      ! error code
     logical                :: scmMode = .false.         ! single column mode
     real(R8)               :: scmLat  = shr_const_SPVAL ! single column lat
@@ -372,32 +372,18 @@ module drof_comp_nuopc
     call shr_file_getLogLevel(shrloglev)
     call shr_file_setLogUnit (logunit)
 
-    !----------------------------------------------------------------------------
-    ! If component is prognostic, map ESMF state to attribute vector
-    !----------------------------------------------------------------------------
-
-    phase = 1  !TODO - this is hard-wired for now and needs to be generalized
-
-    if (phase .ne. 1) then
-       if (rof_prognostic) then
-          do n = 1,fldsToRof%num
-             connected = NUOPC_IsConnected(importState, fieldName=fldsToRof%shortname(n))
-             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) call shr_sys_abort()
-             if (.not. connected) then
-                call shr_sys_abort("Rof prognostic .true. requires connection for " // trim(fldsToRof%shortname(n)))
-             end if
-          end do
-          call shr_nuopc_grid_StateToArray(importState, x2d%rattr, seq_flds_x2r_fields, grid_option, rc=rc)
-          if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
-       end if
-    endif
-
     !--------------------------------
     ! call drof init routine
     !--------------------------------
 
     gsmap => gsmap_target
     ggrid => ggrid_target
+
+    call NUOPC_CompAttributeGet(gcomp, name='case_name', value=case_name, rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
+         line=__LINE__, &
+         file=u_FILE_u)) &
+         return  ! bail out
 
     call NUOPC_CompAttributeGet(gcomp, name='read_restart', value=cvalue, rc=rc)
     if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
@@ -618,10 +604,10 @@ module drof_comp_nuopc
     ! local variables
     type(ESMF_Clock)         :: clock
     type(ESMF_State)         :: importState, exportState
-    integer(IN)              :: shrlogunit   ! original log unit
-    integer(IN)              :: shrloglev    ! original log level
-    character(CL)            :: case_name    ! case name
-    logical                  :: read_restart ! start from restart
+    type(ESMF_Alarm)         :: alarm
+    integer(IN)              :: shrlogunit    ! original log unit
+    integer(IN)              :: shrloglev     ! original log level
+    logical                  :: write_restart ! write restart
     character(len=*),parameter :: subname=trim(modName)//':(ModelAdvance) '
     !-------------------------------------------------------------------------------
 
@@ -661,9 +647,21 @@ module drof_comp_nuopc
     ! Run model
     !--------------------------------
 
+    call ESMF_ClockGetAlarm(clock, alarmname='seq_timemgr_alarm_restart', alarm=alarm, rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
+
+    if (ESMF_AlarmIsRinging(alarm, rc=rc)) then
+       write_restart = .true.
+       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
+       call ESMF_AlarmRingerOff( alarm, rc=rc )
+       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
+    else
+       write_restart = .false.
+    endif
+
     call drof_comp_run(clock, x2d, d2x, &
        SDROF, gsmap, ggrid, mpicom, compid, my_task, master_task, &
-       inst_suffix, logunit, read_restart, case_name)
+       inst_suffix, logunit, read_restart, write_restart, case_name=case_name)
 
     !--------------------------------
     ! Pack export state

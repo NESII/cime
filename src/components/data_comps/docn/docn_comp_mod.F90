@@ -20,7 +20,7 @@ module docn_comp_mod
   use shr_strdata_mod , only: shr_strdata_advance, shr_strdata_restWrite
   use shr_dmodel_mod  , only: shr_dmodel_gsmapcreate, shr_dmodel_rearrGGrid
   use shr_dmodel_mod  , only: shr_dmodel_translate_list, shr_dmodel_translateAV_list, shr_dmodel_translateAV
-  use seq_timemgr_mod , only: seq_timemgr_EClockGetData, seq_timemgr_RestartAlarmIsOn
+  use seq_timemgr_mod , only: seq_timemgr_EClockGetData
 
   use docn_shr_mod   , only: datamode       ! namelist input
   use docn_shr_mod   , only: aquap_option   ! derived from datamode namelist input
@@ -351,7 +351,7 @@ CONTAINS
     call t_adj_detailf(+2)
     call docn_comp_run(EClock, x2o, o2x, &
          SDOCN, gsmap, ggrid, mpicom, compid, my_task, master_task, &
-         inst_suffix, logunit, read_restart)
+         inst_suffix, logunit, read_restart, write_restart=.false.)
     call t_adj_detailf(-2)
 
     if (my_task == master_task) write(logunit,F00) 'docn_comp_init done'
@@ -364,7 +364,7 @@ CONTAINS
   !===============================================================================
   subroutine docn_comp_run(EClock, x2o, o2x, &
        SDOCN, gsmap, ggrid, mpicom, compid, my_task, master_task, &
-       inst_suffix, logunit, read_restart, case_name)
+       inst_suffix, logunit, read_restart, write_restart, case_name)
 
     ! !DESCRIPTION:  run method for docn model
     implicit none
@@ -383,6 +383,7 @@ CONTAINS
     character(len=*)       , intent(in)    :: inst_suffix      ! char string associated with instance
     integer(IN)            , intent(in)    :: logunit          ! logging unit number
     logical                , intent(in)    :: read_restart     ! start from restart
+    logical                , intent(in)    :: write_restart    ! restart alarm is on
     character(CL)          , intent(in), optional :: case_name ! case name
 
     !--- local ---
@@ -397,7 +398,6 @@ CONTAINS
     real(R8)      :: dt                    ! timestep
     integer(IN)   :: nu                    ! unit number
     real(R8)      :: hn                    ! h field
-    logical       :: write_restart         ! restart now
 
     real(R8), parameter :: &
          swp = 0.67_R8*(exp((-1._R8*shr_const_zsrflyr) /1.0_R8)) + 0.33_R8*exp((-1._R8*shr_const_zsrflyr)/17.0_R8)
@@ -410,11 +410,9 @@ CONTAINS
     call t_startf('DOCN_RUN')
 
     call t_startf('docn_run1')
-    call seq_timemgr_EClockGetData( EClock, curr_ymd=CurrentYMD, curr_tod=CurrentTOD)
-    call seq_timemgr_EClockGetData( EClock, curr_yr=yy, curr_mon=mm, curr_day=dd)
-    call seq_timemgr_EClockGetData( EClock, dtime=idt)
+    call seq_timemgr_EClockGetData( EClock, &
+         curr_ymd=CurrentYMD, curr_tod=CurrentTOD, curr_yr=yy, curr_mon=mm, curr_day=dd, dtime=idt)
     dt = idt * 1.0_R8
-    write_restart = seq_timemgr_RestartAlarmIsOn(EClock)
     call t_stopf('docn_run1')
 
     !--------------------
@@ -604,12 +602,15 @@ CONTAINS
 
     if (write_restart) then
        call t_startf('docn_restart')
+
        write(rest_file,"(2a,i4.4,a,i2.2,a,i2.2,a,i5.5,a)") &
             trim(case_name), '.docn'//trim(inst_suffix)//'.r.', &
             yy,'-',mm,'-',dd,'-',currentTOD,'.nc'
+
        write(rest_file_strm,"(2a,i4.4,a,i2.2,a,i2.2,a,i5.5,a)") &
             trim(case_name), '.docn'//trim(inst_suffix)//'.rs1.', &
             yy,'-',mm,'-',dd,'-',currentTOD,'.bin'
+
        if (my_task == master_task) then
           nu = shr_file_getUnit()
           open(nu,file=trim(rpfile)//trim(inst_suffix),form='formatted')

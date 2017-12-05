@@ -75,6 +75,7 @@ module datm_comp_nuopc
   logical                    :: atm_present               ! flag
   logical                    :: atm_prognostic            ! flag
   logical                    :: unpack_import
+  character(CL)              :: case_name                 ! case name
   integer                    :: dbrc
   integer, parameter         :: dbug = 10
   character(len=*),parameter :: grid_option = "mesh"      ! grid_de, grid_arb, grid_reg, mesh
@@ -411,6 +412,12 @@ module datm_comp_nuopc
     gsmap => gsmap_target
     ggrid => ggrid_target
 
+    call NUOPC_CompAttributeGet(gcomp, name='case_name', value=case_name, rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
+         line=__LINE__, &
+         file=u_FILE_u)) &
+         return  ! bail out
+
     call NUOPC_CompAttributeGet(gcomp, name='orb_eccen', value=cvalue, rc=rc)
     if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
          line=__LINE__, &
@@ -685,12 +692,13 @@ module datm_comp_nuopc
     type(ESMF_Clock)         :: clock
     type(ESMF_Time)          :: time
     type(ESMF_State)         :: importState, exportState
+    type(ESMF_Alarm)         :: alarm
     integer                  :: CurrentYMD, CurrentTOD
     integer(IN)              :: shrlogunit     ! original log unit
     integer(IN)              :: shrloglev      ! original log level
-    character(CL)            :: case_name      ! case name
     real(r8)                 :: nextsw_cday
     character(len=128)       :: calendar
+    logical                  :: write_restart ! restart alarm is ringing
     character(len=*),parameter  :: subname=trim(modName)//':(ModelAdvance) '
     !-------------------------------------------------------------------------------
 
@@ -734,9 +742,21 @@ module datm_comp_nuopc
     ! Run model
     !--------------------------------
 
+    call ESMF_ClockGetAlarm(clock, alarmname='seq_timemgr_alarm_restart', alarm=alarm, rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
+
+    if (ESMF_AlarmIsRinging(alarm, rc=rc)) then
+       write_restart = .true.
+       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
+       call ESMF_AlarmRingerOff( alarm, rc=rc )
+       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
+    else
+       write_restart = .false.
+    endif
+
     call datm_comp_run(clock, x2d, d2x, &
        SDATM, gsmap, ggrid, mpicom, compid, my_task, master_task, &
-       inst_suffix, logunit, nextsw_cday, case_name)
+       inst_suffix, logunit, nextsw_cday, write_restart, case_name=case_name)
 
     !--------------------------------
     ! Pack export state

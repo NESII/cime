@@ -17,7 +17,7 @@ module drof_comp_mod
   use shr_strdata_mod , only: shr_strdata_advance, shr_strdata_restWrite
   use shr_dmodel_mod  , only: shr_dmodel_gsmapcreate, shr_dmodel_rearrGGrid
   use shr_dmodel_mod  , only: shr_dmodel_translate_list, shr_dmodel_translateAV_list, shr_dmodel_translateAV
-  use seq_timemgr_mod , only: seq_timemgr_EClockGetData, seq_timemgr_RestartAlarmIsOn
+  use seq_timemgr_mod , only: seq_timemgr_EClockGetData
 
   use drof_shr_mod   , only: datamode       ! namelist input
   use drof_shr_mod   , only: decomp         ! namelist input
@@ -242,7 +242,7 @@ CONTAINS
     call t_adj_detailf(+2)
     call drof_comp_run(EClock, x2r, r2x, &
          SDROF, gsmap, ggrid, mpicom, compid, my_task, master_task, &
-         inst_suffix, logunit, read_restart)
+         inst_suffix, logunit, read_restart, write_restart=.false.)
     call t_adj_detailf(-2)
 
     if (my_task == master_task) write(logunit,F00) 'drof_comp_init done'
@@ -255,7 +255,7 @@ CONTAINS
   !===============================================================================
   subroutine drof_comp_run(EClock, x2r, r2x, &
        SDROF, gsmap, ggrid, mpicom, compid, my_task, master_task, &
-       inst_suffix, logunit, read_restart, case_name)
+       inst_suffix, logunit, read_restart, write_restart, case_name)
 
     ! !DESCRIPTION:  run method for drof model
     implicit none
@@ -274,6 +274,7 @@ CONTAINS
     character(len=*)       , intent(in)    :: inst_suffix      ! char string associated with instance
     integer(IN)            , intent(in)    :: logunit          ! logging unit number
     logical                , intent(in)    :: read_restart     ! start from restart
+    logical                , intent(in)    :: write_restart    ! write restart
     character(CL)          , intent(in), optional :: case_name ! case name
 
     !--- local ---
@@ -284,10 +285,8 @@ CONTAINS
     integer(IN)   :: nf                ! fields loop index
     integer(IN)   :: nl                ! land frac index
     integer(IN)   :: lsize             ! size of attr vect
-    logical       :: write_restart     ! restart now
     integer(IN)   :: nu                ! unit number
     integer(IN)   :: nflds_r2x
-
     character(*), parameter :: F00   = "('(drof_comp_run) ',8a)"
     character(*), parameter :: F04   = "('(drof_comp_run) ',2a,2i8,'s')"
     character(*), parameter :: subName = "(drof_comp_run) "
@@ -296,11 +295,8 @@ CONTAINS
     call t_startf('DROF_RUN')
 
     call t_startf('drof_run1')
-
     call seq_timemgr_EClockGetData( EClock, curr_ymd=CurrentYMD, curr_tod=CurrentTOD)
     call seq_timemgr_EClockGetData( EClock, curr_yr=yy, curr_mon=mm, curr_day=dd)
-    write_restart = seq_timemgr_RestartAlarmIsOn(EClock)
-
     call t_stopf('drof_run1')
 
     !--------------------

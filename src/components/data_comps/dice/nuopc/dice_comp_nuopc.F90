@@ -72,6 +72,8 @@ module dice_comp_nuopc
   integer(IN),parameter      :: master_task=0             ! task number of master task
   logical                    :: ice_prognostic            ! flag
   logical                    :: unpack_import
+  logical                    :: read_restart              ! start from restart
+  character(CL)              :: case_name                 ! case name
   integer                    :: dbrc
   integer, parameter         :: dbug = 10
   character(len=*),parameter :: grid_option = "mesh"      ! grid_de, grid_arb, grid_reg, mesh
@@ -355,7 +357,6 @@ module dice_comp_nuopc
     character(CL)          :: cvalue
     integer(IN)            :: shrlogunit                ! original log unit
     integer(IN)            :: shrloglev                 ! original log level
-    logical                :: read_restart              ! start from restart
     integer(IN)            :: ierr                      ! error code
     logical                :: scmMode = .false.         ! single column mode
     real(R8)               :: scmLat  = shr_const_SPVAL ! single column lat
@@ -387,6 +388,12 @@ module dice_comp_nuopc
 
     gsmap => gsmap_target
     ggrid => ggrid_target
+
+    call NUOPC_CompAttributeGet(gcomp, name='case_name', value=case_name, rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
+         line=__LINE__, &
+         file=u_FILE_u)) &
+         return  ! bail out
 
     call NUOPC_CompAttributeGet(gcomp, name='scmlon', value=cvalue, rc=rc)
     if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
@@ -627,12 +634,12 @@ module dice_comp_nuopc
     type(ESMF_Clock)         :: clock
     type(ESMF_Time)          :: time
     type(ESMF_State)         :: importState, exportState
+    type(ESMF_Alarm)         :: alarm
     integer                  :: CurrentYMD, CurrentTOD
     integer(IN)              :: shrlogunit     ! original log unit
     integer(IN)              :: shrloglev      ! original log level
-    character(CL)            :: case_name      ! case name
     character(len=128)       :: calendar
-    logical                  :: read_restart   ! start from restart
+    logical                  :: write_restart ! restart alarm is ringing
     character(len=*),parameter  :: subname=trim(modName)//':(ModelAdvance) '
     !-------------------------------------------------------------------------------
 
@@ -674,10 +681,22 @@ module dice_comp_nuopc
     ! Run model
     !--------------------------------
 
+    call ESMF_ClockGetAlarm(clock, alarmname='seq_timemgr_alarm_restart', alarm=alarm, rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
+
+    if (ESMF_AlarmIsRinging(alarm, rc=rc)) then
+       write_restart = .true.
+       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
+       call ESMF_AlarmRingerOff( alarm, rc=rc )
+       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
+    else
+       write_restart = .false.
+    endif
+
     call dice_comp_run(clock, x2d, d2x, &
          seq_flds_i2o_per_cat, &
          SDICE, gsmap, ggrid, mpicom, compid, my_task, master_task, &
-         inst_suffix, logunit, read_restart, case_name)
+         inst_suffix, logunit, read_restart, write_restart, case_name=case_name)
 
     !--------------------------------
     ! Pack export state

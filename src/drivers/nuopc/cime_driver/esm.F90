@@ -1188,7 +1188,7 @@ module ESM
     call NUOPC_DriverSetRunSequence(driver, slot=2, clock=EClock_a, rc=rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    call shr_nuopc_methods_Clock_TimePrint(Eclock_o,subname//'EClock_o',rc)
+    call shr_nuopc_methods_Clock_TimePrint(Eclock_o, subname//'EClock_o',rc)
     if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
     call shr_nuopc_methods_Clock_TimePrint(Eclock_a,subname//'EClock_a',rc)
@@ -1822,7 +1822,7 @@ module ESM
     ! Initialize time manager
     !----------------------------------------------------------
 
-    call seq_timemgr_clockInit(driver, pioid, mpicom_gloid, &
+    call seq_timemgr_clockInit(driver, mastertask, pioid, mpicom_gloid, &
          EClock_d, EClock_a, EClock_l, EClock_o, &
          EClock_i, Eclock_g, Eclock_r, Eclock_w, Eclock_e)
 
@@ -1878,7 +1878,6 @@ module ESM
           write(logunit,*) trim(subname),' ERROR: fixed_year settings = ',orb_iyear
           call shr_sys_abort(subname//' ERROR: invalid settings for orb_mode '//trim(orb_mode))
        endif
-
     elseif (trim(orb_mode) == trim(orb_variable_year)) then
        orb_obliq = SHR_ORB_UNDEF_REAL
        orb_eccen = SHR_ORB_UNDEF_REAL
@@ -1888,7 +1887,6 @@ module ESM
           write(logunit,*) trim(subname),' ERROR: variable_year settings = ',orb_iyear, orb_iyear_align
           call shr_sys_abort(subname//' ERROR: invalid settings for orb_mode '//trim(orb_mode))
        endif
-
     elseif (trim(orb_mode) == trim(orb_fixed_parameters)) then
        !-- force orb_iyear to undef to make sure shr_orb_params works properly
        orb_iyear = SHR_ORB_UNDEF_INT

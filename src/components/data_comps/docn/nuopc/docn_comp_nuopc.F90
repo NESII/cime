@@ -74,6 +74,8 @@ module docn_comp_nuopc
   logical                    :: rofice_present            ! flag
   logical                    :: flood_present             ! flag
   logical                    :: unpack_import
+  logical                    :: read_restart              ! start from restart
+  character(CL)              :: case_name                 ! case name
   integer                    :: dbrc
   integer, parameter         :: dbug = 10
   character(len=*),parameter :: grid_option = "mesh"      ! grid_de, grid_arb, grid_reg, mesh
@@ -361,7 +363,6 @@ module docn_comp_nuopc
     character(CL)            :: cvalue
     integer(IN)              :: shrlogunit                ! original log unit
     integer(IN)              :: shrloglev                 ! original log level
-    logical                  :: read_restart              ! start from restart
     integer(IN)              :: ierr                      ! error code
     logical                  :: scmMode = .false.         ! single column mode
     real(R8)                 :: scmLat  = shr_const_SPVAL ! single column lat
@@ -392,6 +393,12 @@ module docn_comp_nuopc
 
     gsmap => gsmap_target
     ggrid => ggrid_target
+
+    call NUOPC_CompAttributeGet(gcomp, name='case_name', value=case_name, rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
+         line=__LINE__, &
+         file=u_FILE_u)) &
+         return  ! bail out
 
     call NUOPC_CompAttributeGet(gcomp, name='scmlon', value=cvalue, rc=rc)
     if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
@@ -528,13 +535,15 @@ module docn_comp_nuopc
 
     call ESMF_AttributeSet(comp, "ShortName", "DOCN", &
          convention=convCIM, purpose=purpComp, rc=rc)
+
     call ESMF_AttributeSet(comp, "LongName", &
          "Climatological Ocean Data Model", &
          convention=convCIM, purpose=purpComp, rc=rc)
+
     call ESMF_AttributeSet(comp, "Description", &
-         "The CESM data models perform the basic function of " // &
+         "The CIME data models perform the basic function of " // &
          "reading external data, modifying that data, and then " // &
-         "sending it to the driver via standard CESM coupling " // &
+         "sending it to the driver via coupling " // &
          "interfaces. The driver and other models have no " // &
          "fundamental knowledge of whether another component " // &
          "is fully active or just a data model.  In some cases, " // &
@@ -544,8 +553,10 @@ module docn_comp_nuopc
          "prognostically and have no need to receive any data " // &
          "from the driver.", &
          convention=convCIM, purpose=purpComp, rc=rc)
+
     call ESMF_AttributeSet(comp, "ReleaseDate", "2010", &
          convention=convCIM, purpose=purpComp, rc=rc)
+
     call ESMF_AttributeSet(comp, "ModelType", "Ocean", &
          convention=convCIM, purpose=purpComp, rc=rc)
 
@@ -623,10 +634,10 @@ module docn_comp_nuopc
     ! local variables
     type(ESMF_Clock)         :: clock
     type(ESMF_State)         :: importState, exportState
-    integer(IN)              :: shrlogunit   ! original log unit
-    integer(IN)              :: shrloglev    ! original log level
-    character(CL)            :: case_name    ! case name
-    logical                  :: read_restart ! start from restart
+    type(ESMF_Alarm)         :: alarm
+    integer(IN)              :: shrlogunit    ! original log unit
+    integer(IN)              :: shrloglev     ! original log level
+    logical                  :: write_restart ! restart alarm is ringing
     character(len=*),parameter  :: subname=trim(modName)//':(ModelAdvance) '
     !-------------------------------------------------------------------------------
 
@@ -666,9 +677,21 @@ module docn_comp_nuopc
     ! Run model
     !--------------------------------
 
+    call ESMF_ClockGetAlarm(clock, alarmname='seq_timemgr_alarm_restart', alarm=alarm, rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
+
+    if (ESMF_AlarmIsRinging(alarm, rc=rc)) then
+       write_restart = .true.
+       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
+       call ESMF_AlarmRingerOff( alarm, rc=rc )
+       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
+    else
+       write_restart = .false.
+    endif
+
     call docn_comp_run(clock, x2d, d2x, &
        SDOCN, gsmap, ggrid, mpicom, compid, my_task, master_task, &
-       inst_suffix, logunit, read_restart, case_name)
+       inst_suffix, logunit, read_restart, write_restart, case_name=case_name)
 
     !--------------------------------
     ! Pack export state
@@ -680,7 +703,7 @@ module docn_comp_nuopc
     ! Need to reset scalars that will be used after initialization, since shr_nuopc_grid_ArrayToState calls
     ! shr_nuopc_methods_State_reset(state, value = -9999._R8, rc=rc) - so that all scalar values will be set to -9999
     ! unless they are reset
-    call shr_nuopc_methods_State_SetScalar(0.0_r8,         seq_flds_scalar_index_dead_comps, exportState, mpicom, rc)
+    call shr_nuopc_methods_State_SetScalar(0.0_r8, seq_flds_scalar_index_dead_comps, exportState, mpicom, rc)
     if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
 
     !--------------------------------
@@ -742,6 +765,7 @@ module docn_comp_nuopc
 
     call ESMF_ClockGet(dclock, currTime=dcurrtime, timeStep=dtimestep, rc=rc)
     if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
+
     call ESMF_ClockGet(mclock, currTime=mcurrtime, timeStep=mtimestep, rc=rc)
     if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
 
@@ -752,10 +776,13 @@ module docn_comp_nuopc
     if (mcurrtime /= dcurrtime) then
       call ESMF_TimeGet(dcurrtime, timeString=dtimestring, rc=rc)
       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return
+
       call ESMF_TimeGet(mcurrtime, timeString=mtimestring, rc=rc)
       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return
       rc=ESMF_Failure
-      call ESMF_LogWrite(subname//" ERROR in time consistency; "//trim(dtimestring)//" ne "//trim(mtimestring),  ESMF_LOGMSG_ERROR, rc=dbrc)
+
+      call ESMF_LogWrite(subname//" ERROR in time consistency; "//trim(dtimestring)//" ne "//trim(mtimestring),  &
+           ESMF_LOGMSG_ERROR, rc=dbrc)
       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return
     endif
 
@@ -781,13 +808,15 @@ module docn_comp_nuopc
     if (alarmCount == 0) then
       call ESMF_ClockGetAlarmList(dclock, alarmlistflag=ESMF_ALARMLIST_ALL, alarmCount=alarmCount, rc=rc)
       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return
+
       allocate(alarmList(alarmCount))
+
       call ESMF_ClockGetAlarmList(dclock, alarmlistflag=ESMF_ALARMLIST_ALL, alarmList=alarmList, rc=rc)
       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return
 
       do n = 1, alarmCount
-!         call ESMF_AlarmPrint(alarmList(n), rc=rc)
-!         if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return
+         ! call ESMF_AlarmPrint(alarmList(n), rc=rc)
+         ! if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return
          dalarm = ESMF_AlarmCreate(alarmList(n), rc=rc)
          if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return
          call ESMF_AlarmSet(dalarm, clock=mclock, rc=rc)
