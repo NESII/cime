@@ -17,6 +17,7 @@ module atm_comp_mct
   use datm_shr_mod    , only: datm_shr_read_namelists
   use datm_shr_mod    , only: presaero
   use seq_flds_mod    , only: seq_flds_a2x_fields, seq_flds_x2a_fields
+  use seq_timemgr_mod , only: seq_timemgr_EClockGetData, seq_timemgr_RestartAlarmIsOn
 
   ! !PUBLIC TYPES:
   implicit none
@@ -221,6 +222,7 @@ CONTAINS
     integer(IN)                      :: shrloglev      ! original log level
     character(CL)                    :: case_name      ! case name
     real(R8)                         :: nextsw_cday    ! calendar of next atm sw
+    logical                          :: write_restart     ! restart now
     character(*), parameter :: subName = "(atm_run_mct) "
     !-------------------------------------------------------------------------------
 
@@ -236,9 +238,11 @@ CONTAINS
 
     call seq_infodata_GetData(infodata, case_name=case_name)
 
+    write_restart = seq_timemgr_RestartAlarmIsOn(EClock)
+
     call datm_comp_run(EClock, x2a, a2x, &
        SDATM, gsmap, ggrid, mpicom, compid, my_task, master_task, &
-       inst_suffix, logunit, nextsw_cday, case_name)
+       inst_suffix, logunit, nextsw_cday, write_restart, case_name=case_name)
 
     call seq_infodata_PutData(infodata, nextsw_cday=nextsw_cday )
 

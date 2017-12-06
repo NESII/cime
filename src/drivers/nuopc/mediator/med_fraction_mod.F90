@@ -185,7 +185,6 @@ module med_fraction_mod
       call shr_nuopc_methods_FB_getFldPtr(is_local%wrap%FBfrac(complnd), 'lfrin', dataPtr1, rc=rc)
       if (.not. shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) then
          ! If 'lfrin' and 'Sl_lfrin' exist, then copy 'Sl_lfrin' to 'lfrin'
-        ! TODO: make sure that clm sets Sl_lfrin
         call shr_nuopc_methods_FB_getFldPtr(is_local%wrap%FBImp(complnd,complnd) , 'Sl_lfrin' , dataPtr2, rc=rc)
         if (.not. shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) then
           dataPtr1 = dataPtr2

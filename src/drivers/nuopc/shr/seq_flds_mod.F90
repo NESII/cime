@@ -955,7 +955,7 @@ module seq_flds_mod
      call seq_flds_add(x2i_states,"So_t")
      call seq_flds_add(x2w_states,"So_t")
 
-     ! Surface friction velocity in land (land/atm only)
+     ! Surface fraction in land determined by land (land/atm only)
      longname = 'Surface fraction in land'
      stdname  = 'land_fraction_from_land'
      units    = '1'

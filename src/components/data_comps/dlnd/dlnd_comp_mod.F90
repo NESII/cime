@@ -19,7 +19,7 @@ module dlnd_comp_mod
   use shr_strdata_mod   , only: shr_strdata_advance, shr_strdata_restWrite
   use shr_dmodel_mod    , only: shr_dmodel_gsmapcreate, shr_dmodel_rearrGGrid
   use shr_dmodel_mod    , only: shr_dmodel_translate_list, shr_dmodel_translateAV_list, shr_dmodel_translateAV
-  use seq_timemgr_mod   , only: seq_timemgr_EClockGetData, seq_timemgr_RestartAlarmIsOn
+  use seq_timemgr_mod   , only: seq_timemgr_EClockGetData
   use glc_elevclass_mod , only: glc_get_num_elevation_classes, glc_elevclass_as_string
 
   use dlnd_shr_mod   , only: datamode       ! namelist input
@@ -319,7 +319,7 @@ CONTAINS
   !===============================================================================
   subroutine dlnd_comp_run(EClock, x2l, l2x, &
        SDLND, gsmap, ggrid, mpicom, compid, my_task, master_task, &
-       inst_suffix, logunit, read_restart, case_name)
+       inst_suffix, logunit, read_restart, write_restart, case_name)
 
     ! !DESCRIPTION:  run method for dlnd model
     implicit none
@@ -338,6 +338,7 @@ CONTAINS
     character(len=*)       , intent(in)    :: inst_suffix      ! char string associated with instance
     integer(IN)            , intent(in)    :: logunit          ! logging unit number
     logical                , intent(in)    :: read_restart     ! start from restart
+    logical                , intent(in)    :: write_restart    ! write restart
     character(CL)          , intent(in), optional :: case_name ! case name
 
     !--- local ---
@@ -361,7 +362,6 @@ CONTAINS
     call t_startf('dlnd_run1')
     call seq_timemgr_EClockGetData( EClock, curr_ymd=CurrentYMD, curr_tod=CurrentTOD)
     call seq_timemgr_EClockGetData( EClock, curr_yr=yy, curr_mon=mm, curr_day=dd)
-    write_restart = seq_timemgr_RestartAlarmIsOn(EClock)
     call t_stopf('dlnd_run1')
 
     !--------------------

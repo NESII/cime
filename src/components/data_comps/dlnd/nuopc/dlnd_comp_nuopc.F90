@@ -583,11 +583,12 @@ module dlnd_comp_nuopc
 
     ! local variables
     type(ESMF_Clock)         :: clock
+    type(ESMF_Alarm)         :: alarm
     type(ESMF_State)         :: importState, exportState
-    integer(IN)              :: shrlogunit   ! original log unit
-    integer(IN)              :: shrloglev    ! original log level
-    character(CL)            :: case_name    ! case name
-    logical                  :: read_restart ! start from restart
+    integer(IN)              :: shrlogunit    ! original log unit
+    integer(IN)              :: shrloglev     ! original log level
+    character(CL)            :: case_name     ! case name
+    logical                  :: write_restart ! write restart
     character(len=*),parameter :: subname=trim(modName)//':(ModelAdvance) '
     !-------------------------------------------------------------------------------
 
@@ -627,9 +628,21 @@ module dlnd_comp_nuopc
     ! Run model
     !--------------------------------
 
+    call ESMF_ClockGetAlarm(clock, alarmname='seq_timemgr_alarm_restart', alarm=alarm, rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
+
+    if (ESMF_AlarmIsRinging(alarm, rc=rc)) then
+       write_restart = .true.
+       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
+       call ESMF_AlarmRingerOff( alarm, rc=rc )
+       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
+    else
+       write_restart = .false.
+    endif
+
     call dlnd_comp_run(Clock, x2d, d2x, &
        SDLND, gsmap, ggrid, mpicom, compid, my_task, master_task, &
-       inst_suffix, logunit, read_restart, case_name)
+       inst_suffix, logunit, read_restart, write_restart, case_name=case_name)
 
     !--------------------------------
     ! Pack export state

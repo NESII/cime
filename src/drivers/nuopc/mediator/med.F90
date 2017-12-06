@@ -41,8 +41,7 @@ module MED
   use shr_nuopc_methods_mod , only: shr_nuopc_methods_State_getNumFields
   use shr_nuopc_methods_mod , only: shr_nuopc_methods_ChkErr
   use shr_nuopc_methods_mod , only: shr_nuopc_methods_clock_timeprint
-  use shr_nuopc_methods_mod , only: shr_nuopc_methods_State_GetScalar !DEBUG
-  use shr_nuopc_methods_mod , only: shr_nuopc_methods_State_Diagnose  !DEBUG
+  use shr_nuopc_methods_mod , only: shr_nuopc_methods_State_Diagnose
 
   use med_infodata_mod      , only: med_infodata_CopyStateToInfodata, infodata=>med_infodata
 
@@ -861,9 +860,9 @@ module MED
     integer                         :: lmpicom
     real(ESMF_KIND_R8)              :: intervalSec
     type(ESMF_TimeInterval)         :: timeStep
-! tcx XGrid
-!    type(ESMF_Field)               :: fieldX, fieldA, fieldO
-!    type(ESMF_XGrid)               :: xgrid
+    ! tcx XGrid
+    !    type(ESMF_Field)               :: fieldX, fieldA, fieldO
+    !    type(ESMF_XGrid)               :: xgrid
     integer                         :: n, n1, n2
     character(SHR_KIND_CL)          :: cvalue
     logical                         :: connected
@@ -890,11 +889,13 @@ module MED
 
     do n1 = 1,ncomps
       if (ESMF_StateIsCreated(is_local%wrap%NStateImp(n1),rc=rc)) then
-        call shr_nuopc_fldList_Realize(is_local%wrap%NStateImp(n1), fldlist=fldsFr(n1), tag=subname//':Fr'//trim(compname(n1)), rc=rc)
+         call shr_nuopc_fldList_Realize(is_local%wrap%NStateImp(n1), fldlist=fldsFr(n1), &
+              tag=subname//':Fr'//trim(compname(n1)), rc=rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
       endif
       if (ESMF_StateIsCreated(is_local%wrap%NStateExp(n1),rc=rc)) then
-        call shr_nuopc_fldList_Realize(is_local%wrap%NStateExp(n1), fldlist=fldsTo(n1), tag=subname//':To'//trim(compname(n1)), rc=rc)
+         call shr_nuopc_fldList_Realize(is_local%wrap%NStateExp(n1), fldlist=fldsTo(n1), &
+              tag=subname//':To'//trim(compname(n1)), rc=rc)
         if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
       endif
     enddo
@@ -919,16 +920,15 @@ module MED
     ! local variables
     type(InternalState) :: is_local
     integer :: n1,n2
-!    type(ESMF_Field)              :: field
-!    type(ESMF_Grid)               :: grid
-!    integer                       :: localDeCount
-
-!    type(ESMF_DistGrid)           :: distgrid
-!    integer                       :: dimCount, tileCount, petCount
-!    integer                       :: deCountPTile, extraDEs
-!    integer, allocatable          :: minIndexPTile(:,:), maxIndexPTile(:,:)
-!    integer, allocatable          :: regDecompPTile(:,:)
-!    integer                       :: i, j, n, n1
+    !    type(ESMF_Field)              :: field
+    !    type(ESMF_Grid)               :: grid
+    !    integer                       :: localDeCount
+    !    type(ESMF_DistGrid)           :: distgrid
+    !    integer                       :: dimCount, tileCount, petCount
+    !    integer                       :: deCountPTile, extraDEs
+    !    integer, allocatable          :: minIndexPTile(:,:), maxIndexPTile(:,:)
+    !    integer, allocatable          :: regDecompPTile(:,:)
+    !    integer                       :: i, j, n, n1
 
     character(len=*),parameter :: subname='(module_MEDIATOR:InitializeIPDv03p4)'
 
@@ -1050,7 +1050,8 @@ module MED
               if (grid_arbopt == "grid_reg") then
 
                 if (dbug_flag > 1) then
-                  call ESMF_LogWrite(trim(subname)//trim(string)//": accept arb2reg grid for "//trim(fieldNameList(n)), ESMF_LOGMSG_INFO, rc=dbrc)
+                   call ESMF_LogWrite(trim(subname)//trim(string)//": accept arb2reg grid for "//trim(fieldNameList(n)), &
+                        ESMF_LOGMSG_INFO, rc=dbrc)
                 endif
                 ! Use a regDecomp representation for the grid
                 ! first get tile min/max, only single tile supported for arbDistr Grid
@@ -1221,7 +1222,8 @@ module MED
               call ESMF_FieldEmptySet(field, grid=grid, rc=rc)
               if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
               if (dbug_flag > 1) then
-                call ESMF_LogWrite(trim(subname)//trim(string)//": attach grid for "//trim(fieldNameList(n1)), ESMF_LOGMSG_INFO, rc=rc)
+                 call ESMF_LogWrite(trim(subname)//trim(string)//": attach grid for "//trim(fieldNameList(n1)), &
+                      ESMF_LOGMSG_INFO, rc=rc)
                 if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
               endif
               call shr_nuopc_methods_Field_GeomPrint(field,trim(fieldNameList(n))//'_new',rc)
@@ -1414,11 +1416,12 @@ module MED
     character(len=512)          :: vmapfile, rmapfile, rimapfile, rlmapfile
     character(len=128)          :: value, rhname, rhname_file
     integer                     :: SrcMaskValue, DstMaskValue
-    integer                     :: n
+    integer                     :: n, fieldCount
     integer                     :: len
     integer                     :: ierr
     logical                     :: first_call = .true.
-    character(MPI_MAX_ERROR_STRING) :: lstring
+    character(ESMF_MAXSTR),allocatable :: fieldNameList(:)
+    character(MPI_MAX_ERROR_STRING)    :: lstring
     character(len=*), parameter :: subname='(module_MEDIATOR:DataInitialize)'
     !-----------------------------------------------------------
 
@@ -1571,8 +1574,10 @@ module MED
           if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
           ! Initialize FBfrac for component n1 - the field names will be fraclist(:,n1)
-          call shr_nuopc_methods_FB_init(is_local%wrap%FBfrac(n1), STgeom=is_local%wrap%NStateExp(n1), &
+          call shr_nuopc_methods_FB_init(is_local%wrap%FBfrac(n1), STgeom=is_local%wrap%NStateImp(n1), &
             fieldNameList=fraclist(:,n1), name='FBfrac'//trim(compname(n1)), rc=rc)
+          ! call shr_nuopc_methods_FB_init(is_local%wrap%FBfrac(n1), STgeom=is_local%wrap%NStateExp(n1), &
+          !   fieldNameList=fraclist(:,n1), name='FBfrac'//trim(compname(n1)), rc=rc)
           if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
         endif
@@ -1792,76 +1797,70 @@ module MED
 
     ! First check to see if the import state from the atmosphere is all done
     allDone = .true.  ! reset if an item is found that is not done
-    do n = 1,fldsFr(compatm)%num
-       call ESMF_StateGet(is_local%wrap%NStateImp(compatm), itemName=fldsFr(compatm)%shortname(n), itemType=itemType, rc=rc)
+
+    call ESMF_StateGet(is_local%wrap%NStateImp(compatm), itemCount=fieldCount, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    allocate(fieldNameList(fieldCount))
+    call ESMF_StateGet(is_local%wrap%NStateImp(compatm), itemNameList=fieldNameList, rc=rc)
+    if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+    do n=1, fieldCount
+       call ESMF_StateGet(is_local%wrap%NStateImp(compatm), itemName=fieldNameList(n), field=field, rc=rc)
        if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
-       if (itemType /= ESMF_STATEITEM_NOTFOUND) then
-          connected = NUOPC_IsConnected(is_local%wrap%NStateImp(compatm), fieldName=fldsFr(compatm)%shortname(n), rc=rc)
+       atCorrectTime = NUOPC_IsAtTime(field, time, rc=rc)
+       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       if (.not. atCorrectTime) then
+          ! If any atm import fields are not time stamped correctly, then dependency is not satisified - must return to atm
+          call ESMF_LogWrite("MED - Initialize-Data-Dependency(1) from ATM NOT YET SATISFIED!!!", ESMF_LOGMSG_INFO, rc=rc)
           if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-
-          if (connected) then
-             ! Determine if atm import fields are time stamped correctly
-             call ESMF_StateGet(is_local%wrap%NStateImp(compatm), itemName=fldsFr(compatm)%shortname(n), field=field, rc=rc)
-             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-
-             atCorrectTime = NUOPC_IsAtTime(field, time, rc=rc)
-             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-
-             if (.not. atCorrectTime) then
-                ! If any atm import fields are not time stamped correctly, then dependency is not satisified - must return to atm
-                call ESMF_LogWrite("MED - Initialize-Data-Dependency from ATM NOT YET SATISFIED!!!", ESMF_LOGMSG_INFO, rc=rc)
-                if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-
-                call ESMF_LogWrite("MED - Unsatisfied Data-Dependency Field is " // trim(fldsFr(compatm)%shortname(n)), &
-                     ESMF_LOGMSG_INFO, rc=rc)
-                if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-
-                allDone = .false.
-                exit  ! break out of the loop when first not satisfied found
-             endif
-          endif
+          call ESMF_LogWrite("MED - Unsatisfied Data-Dependency Field is " // trim(fldsFr(compatm)%shortname(n)), &
+               ESMF_LOGMSG_INFO, rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+          allDone = .false.
+          exit  ! break out of the loop when first not satisfied found
        endif
     enddo
-
-    ! Check if the atm/ocn init should be done
-    ! This is the case if there is either a prognostic ocean or a prognostic atmosphere - (both are fine as well)
-    ! Note that xxx_prognostic flag will be .true. if fields are expected to be sent from the mediator to the compnent
+    deallocate(fieldNameList)
 
     if (.not. allDone) then
 
-       if (is_local%wrap%med_coupling_active(compocn,compatm) .and. &
-           is_local%wrap%med_coupling_active(compatm,compocn)) then
+       ! (1) Determine if the scalar data in atm import state is at the correct time - only check this on master task
+       ! since scalar data is only obtained from atm import state on master task
 
-          ! Obtain scalar data field from atm import state
-          call ESMF_StateGet(is_local%wrap%NStateImp(compatm), itemName=trim(seq_flds_scalar_name), field=field, rc=rc)
+       ! Obtain scalar data field from atm import state
+       call ESMF_StateGet(is_local%wrap%NStateImp(compatm), itemName=trim(seq_flds_scalar_name), field=field, rc=rc)
+       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return
+
+       if (mastertask) then
+          atCorrectTime = NUOPC_IsAtTime(field, time, rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+       end if
+       call MPI_BCAST (atCorrectTime, 1, MPI_LOGICAL, 0, is_local%wrap%mpicom, rc)
+       if (rc /= MPI_SUCCESS) then
+          call MPI_ERROR_STRING(rc,lstring,len,ierr)
+          call ESMF_LogWrite(trim(subname)//": ERROR "//trim(lstring), ESMF_LOGMSG_INFO, line=__LINE__, file=u_FILE_u, rc=dbrc)
+          rc = ESMF_FAILURE
           if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return
+       endif
 
-          ! Determine if the scalar data in atm import state is at the correct time - only check this on master task
-          ! since scalar data is only obtained from atm import state on master task
-          if (mastertask) then
-             atCorrectTime = NUOPC_IsAtTime(field, time, rc=rc)
-             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-          end if
-          call MPI_BCAST (atCorrectTime, 1, MPI_LOGICAL, 0, is_local%wrap%mpicom, rc)
-          if (rc /= MPI_SUCCESS) then
-             call MPI_ERROR_STRING(rc,lstring,len,ierr)
-             call ESMF_LogWrite(trim(subname)//": ERROR "//trim(lstring), ESMF_LOGMSG_INFO, line=__LINE__, file=u_FILE_u, rc=dbrc)
-             rc = ESMF_FAILURE
-             if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return
-          endif
+       if (.not. atCorrectTime) then
 
-          if (.not. atCorrectTime) then
+          ! If scalar data in atm import state is not at the correct time - then return
 
-             ! If scalar data in atm import state is not at the correct time - then return
-             call ESMF_LogWrite("MED - cpl_scalars are not at corret time ", ESMF_LOGMSG_INFO, rc=rc)
-             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-             call ESMF_LogWrite("MED - Initialize-Data-Dependency(1) from ATM NOT YET SATISFIED!!!", ESMF_LOGMSG_INFO, rc=rc)
-             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+          call ESMF_LogWrite("MED - cpl_scalars are not at corret time ", ESMF_LOGMSG_INFO, rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+          call ESMF_LogWrite("MED - Initialize-Data-Dependency(2) from ATM NOT YET SATISFIED!!!", ESMF_LOGMSG_INFO, rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
-             RETURN ! IMPORTANT - return if cpl_scalars have not been set
+          RETURN ! IMPORTANT - return if cpl_scalars have not been set
 
-          else
+       else ! cpl_scalars form atm are set
+
+          ! (2) check if the atm/ocn init should be done.
+
+          if (is_local%wrap%med_coupling_active(compocn,compatm) .and. &
+              is_local%wrap%med_coupling_active(compatm,compocn)) then
 
              ! If scalar data in atm import state is at the correct time then initialize the atm/ocean fluxes
              ! and compute the ocean albedos
@@ -1879,30 +1878,36 @@ module MED
              if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
           end if
-       end if
 
-       ! Do the merge to the atmospheric component
-       call med_phases_prep_atm(gcomp, rc=rc)
-       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-
-       ! Copy the FBExp(compatm) to NstatExp(compatm)
-       call med_connectors_prep_med2atm(gcomp, rc=rc)
-       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-
-       ! Set the 'Updated' attributed for ALL fields in the exportState to the atm as 'true'
-       do n=1,fldsTo(compatm)%num
-          call ESMF_StateGet(is_local%wrap%NStateExp(compatm), itemName=fldsTo(compatm)%shortname(n), field=field, rc=rc)
+          ! (3) do the merge to the atmospheric component
+          call med_phases_prep_atm(gcomp, rc=rc)
           if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
 
-          call NUOPC_SetAttribute(field, name="Updated", value="true", rc=rc)
+          ! (4) copy the FBExp(compatm) to NstatExp(compatm)
+          call med_connectors_prep_med2atm(gcomp, rc=rc)
           if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
-       end do
 
-       ! Connectors will be automatically called between the mediator and atm until allDone is true
-       call ESMF_LogWrite("MED - Initialize-Data-Dependency Sending Data to ATM", ESMF_LOGMSG_INFO, rc=rc)
-       if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+          ! (5)  change 'Updated' attribute to true for ALL exportState fields
+          call ESMF_StateGet(is_local%wrap%NStateExp(compatm), itemCount=fieldCount, rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+          allocate(fieldNameList(fieldCount))
+          call ESMF_StateGet(is_local%wrap%NStateExp(compatm), itemNameList=fieldNameList, rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+          do n=1, fieldCount
+             call ESMF_StateGet(is_local%wrap%NStateExp(compatm), itemName=fieldNameList(n), field=field, rc=rc)
+             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+             call NUOPC_SetAttribute(field, name="Updated", value="true", rc=rc)
+             if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+          end do
+          deallocate(fieldNameList)
 
-    else
+          ! Connectors will be automatically called between the mediator and atm until allDone is true
+          call ESMF_LogWrite("MED - Initialize-Data-Dependency Sending Data to ATM", ESMF_LOGMSG_INFO, rc=rc)
+          if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       end if ! cpl_scalars are set
+
+    else ! allDone is true
 
        ! Copy the NstateImp(compatm) to FBImp(compatm)
        call med_connectors_post_atm2med(gcomp, rc=rc)

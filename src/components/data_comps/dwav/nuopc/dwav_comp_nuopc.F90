@@ -69,6 +69,7 @@ module dwav_comp_nuopc
   character(len=16)          :: inst_suffix = ""          ! char string associated with instance (ie. "_0001" or "")
   integer(IN)                :: logunit                   ! logging unit number
   integer(IN),parameter      :: master_task=0             ! task number of master task
+  logical                    :: read_restart              ! start from restart
   logical                    :: wav_prognostic            ! flag
   logical                    :: unpack_import
   integer                    :: dbrc
@@ -580,11 +581,12 @@ module dwav_comp_nuopc
 
     ! local variables
     type(ESMF_Clock)         :: clock
+    type(ESMF_Alarm)         :: alarm
     type(ESMF_State)         :: importState, exportState
-    integer(IN)              :: shrlogunit   ! original log unit
-    integer(IN)              :: shrloglev    ! original log level
-    character(CL)            :: case_name    ! case name
-    logical                  :: read_restart ! start from restart
+    integer(IN)              :: shrlogunit    ! original log unit
+    integer(IN)              :: shrloglev     ! original log level
+    character(CL)            :: case_name     ! case name
+    logical                  :: write_restart ! write a restart
     character(len=*),parameter :: subname=trim(modName)//':(ModelAdvance) '
     !-------------------------------------------------------------------------------
 
@@ -624,9 +626,21 @@ module dwav_comp_nuopc
     ! Run model
     !--------------------------------
 
+    call ESMF_ClockGetAlarm(clock, alarmname='seq_timemgr_alarm_restart', alarm=alarm, rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
+
+    if (ESMF_AlarmIsRinging(alarm, rc=rc)) then
+       write_restart = .true.
+       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
+       call ESMF_AlarmRingerOff( alarm, rc=rc )
+       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=u_FILE_u)) return  ! bail out
+    else
+       write_restart = .false.
+    endif
+
     call dwav_comp_run(clock, x2d, d2x, &
        SDWAV, gsmap, ggrid, mpicom, compid, my_task, master_task, &
-       inst_suffix, logunit, read_restart, case_name)
+       inst_suffix, logunit, read_restart, write_restart, case_name=case_name)
 
     !--------------------------------
     ! Pack export state

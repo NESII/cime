@@ -362,7 +362,6 @@ module datm_comp_nuopc
     integer, intent(out) :: rc
 
     ! local variables
-    integer(IN)                  :: phase
     character(ESMF_MAXSTR)       :: convCIM, purpComp
     type(ESMF_Grid)              :: Egrid
     type(ESMF_Mesh)              :: Emesh
@@ -474,14 +473,12 @@ module datm_comp_nuopc
          return  ! bail out
     read(cvalue,*) read_restart
 
-    phase = 1  ! only one phase for nuopc cap
-
     call datm_comp_init(clock, x2d, d2x, &
          seq_flds_x2a_fields, seq_flds_a2x_fields, &
          SDATM, gsmap, ggrid, mpicom, compid, my_task, master_task, &
          inst_suffix, inst_name, logunit, read_restart, &
          scmMode, scmlat, scmlon, &
-         orbEccen, orbMvelpp, orbLambm0, orbObliqr, phase, nextsw_cday)
+         orbEccen, orbMvelpp, orbLambm0, orbObliqr, phase=1, nextsw_cday=nextsw_cday)
 
     !--------------------------------
     ! generate the mesh

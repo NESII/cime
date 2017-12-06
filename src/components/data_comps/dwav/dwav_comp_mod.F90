@@ -17,7 +17,7 @@ module dwav_comp_mod
   use shr_strdata_mod   , only: shr_strdata_advance, shr_strdata_restWrite
   use shr_dmodel_mod    , only: shr_dmodel_gsmapcreate, shr_dmodel_rearrGGrid
   use shr_dmodel_mod    , only: shr_dmodel_translate_list, shr_dmodel_translateAV_list, shr_dmodel_translateAV
-  use seq_timemgr_mod   , only: seq_timemgr_EClockGetData, seq_timemgr_RestartAlarmIsOn
+  use seq_timemgr_mod   , only: seq_timemgr_EClockGetData
 
   use dwav_shr_mod   , only: datamode       ! namelist input
   use dwav_shr_mod   , only: decomp         ! namelist input
@@ -252,7 +252,7 @@ CONTAINS
   !===============================================================================
   subroutine dwav_comp_run(EClock, x2w, w2x, &
        SDWAV, gsmap, ggrid, mpicom, compid, my_task, master_task, &
-       inst_suffix, logunit, read_restart, case_name)
+       inst_suffix, logunit, read_restart, write_restart, case_name)
 
     ! !DESCRIPTION:  run method for dwav model
     implicit none
@@ -295,7 +295,6 @@ CONTAINS
     call seq_timemgr_EClockGetData( EClock, curr_yr=yy, curr_mon=mm, curr_day=dd)
     call seq_timemgr_EClockGetData( EClock, dtime=idt)
     dt = idt * 1.0_r8
-    write_restart = seq_timemgr_RestartAlarmIsOn(EClock)
     call t_stopf('dwav_run1')
 
     !--------------------
