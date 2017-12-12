@@ -6,11 +6,10 @@ module seq_timemgr_mod
   use ESMF
   use NUOPC
   use shr_cal_mod
-  use SHR_KIND_mod, only: SHR_KIND_IN, SHR_KIND_R8, SHR_KIND_CS
-  use SHR_KIND_mod, only: SHR_KIND_CL, SHR_KIND_I8
-  use seq_comm_mct, only: logunit, loglevel, seq_comm_iamin, CPLID
-  use seq_comm_mct, only: seq_comm_gloroot
-  use shr_sys_mod,  only: shr_sys_abort, shr_sys_flush
+  use SHR_KIND_mod , only: SHR_KIND_IN, SHR_KIND_R8, SHR_KIND_CS
+  use SHR_KIND_mod , only: SHR_KIND_CL, SHR_KIND_I8
+  use shr_comms_mod, only: logunit, loglevel, MEDID, shr_comms_getinfo
+  use shr_sys_mod  , only: shr_sys_abort, shr_sys_flush
 
   implicit none
 
@@ -256,6 +255,8 @@ contains
     character(SHR_KIND_CS)      :: glc_avg_period       ! Glc avering coupling period
     logical                     :: esp_run_on_pause     ! Run ESP on pause cycle
     logical                     :: end_restart          ! Write restart at end of run
+    integer(SHR_KIND_IN)        :: gloroot
+    logical                     :: iamin
     integer(SHR_KIND_IN)        :: ierr                 ! Return code
     character(len=*), parameter :: F0A = "(2A,A)"
     character(len=*), parameter :: F0I = "(2A,I10)"
@@ -433,12 +434,15 @@ contains
     read(cvalue,*) end_restart
 
     !---------------------------------------------------------------------------
-    ! Read Restart (seq_io is called on all CPLID pes)
-    ! NOTE: slightly messy, seq_io is only valid on CPLID
+    ! Read Restart (seq_io is called on all MEDID pes)
+    ! NOTE: slightly messy, seq_io is only valid on MEDID
     !---------------------------------------------------------------------------
 
+    ! TODO: where does this belong? will not be using seq_io for meditor restarts -
+    ! This belongs in the initialization of the mediator
     if (read_restart) then
-       if (seq_comm_iamin(CPLID)) then
+       call shr_comms_getinfo(MEDID, iamin=iamin)
+       if (iamin) then
           call seq_io_read(restart_file, pioid, start_ymd, 'seq_timemgr_start_ymd')
           call seq_io_read(restart_file, pioid, start_tod, 'seq_timemgr_start_tod')
           call seq_io_read(restart_file, pioid, ref_ymd  , 'seq_timemgr_ref_ymd')
@@ -447,13 +451,27 @@ contains
           call seq_io_read(restart_file, pioid, curr_tod , 'seq_timemgr_curr_tod')
        endif
 
-       !--- Send from CPLID ROOT to GLOBALID ROOT, use bcast as surrogate
-       call shr_mpi_bcast(start_ymd, mpicom, pebcast=seq_comm_gloroot(CPLID))
-       call shr_mpi_bcast(start_tod, mpicom, pebcast=seq_comm_gloroot(CPLID))
-       call shr_mpi_bcast(  ref_ymd, mpicom, pebcast=seq_comm_gloroot(CPLID))
-       call shr_mpi_bcast(  ref_tod, mpicom, pebcast=seq_comm_gloroot(CPLID))
-       call shr_mpi_bcast( curr_ymd, mpicom, pebcast=seq_comm_gloroot(CPLID))
-       call shr_mpi_bcast( curr_tod, mpicom, pebcast=seq_comm_gloroot(CPLID))
+       !--- Send from MEDID ROOT to GLOBALID ROOT, use bcast as surrogate
+       call shr_comms_getinfo(MEDID, gloroot=gloroot)
+       call shr_mpi_bcast(start_ymd, mpicom, pebcast=gloroot)
+       call shr_mpi_bcast(start_tod, mpicom, pebcast=gloroot)
+       call shr_mpi_bcast(  ref_ymd, mpicom, pebcast=gloroot)
+       call shr_mpi_bcast(  ref_tod, mpicom, pebcast=gloroot)
+       call shr_mpi_bcast( curr_ymd, mpicom, pebcast=gloroot)
+       call shr_mpi_bcast( curr_tod, mpicom, pebcast=gloroot)
+    endif
+
+    if ( ref_ymd == 0 ) then
+       ref_ymd = start_ymd
+       ref_tod = start_tod
+    endif
+    if ( curr_ymd == 0 ) then
+       curr_ymd = start_ymd
+       curr_tod = start_tod
+    endif
+    if ( stop_ymd < 0) then
+       stop_ymd = 99990101
+       stop_tod = 0
     endif
 
     !---------------------------------------------------------------------------
@@ -468,20 +486,8 @@ contains
     if (wav_cpl_dt == 0) wav_cpl_dt = atm_cpl_dt ! Copy atm coupling time into wav
     if (esp_cpl_dt == 0) esp_cpl_dt = atm_cpl_dt ! Copy atm coupling time into esp
 
-    if ( ref_ymd == 0 ) then
-       ref_ymd = start_ymd
-       ref_tod = start_tod
-    endif
-    if ( curr_ymd == 0 ) then
-       curr_ymd = start_ymd
-       curr_tod = start_tod
-    endif
-    if ( stop_ymd < 0) then
-       stop_ymd = 99990101
-       stop_tod = 0
-    endif
     if (trim(restart_option) == trim(seq_timemgr_optNone) .or. &
-         trim(restart_option) == trim(seq_timemgr_optNever)) then
+        trim(restart_option) == trim(seq_timemgr_optNever)) then
        if (end_restart) then
           end_restart = .false.
           write(logunit,F0A) trim(subname),' WARNING: overriding end_restart to '// &

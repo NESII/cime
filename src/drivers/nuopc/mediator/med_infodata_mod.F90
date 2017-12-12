@@ -6,21 +6,22 @@ module med_infodata_mod
   use ESMF
   use NUOPC
   use mpi
-  use shr_kind_mod, only: SHR_KIND_CS, SHR_KIND_CL, SHR_KIND_IN, SHR_KIND_R8, SHR_KIND_I8
-  use shr_sys_mod,  only: shr_sys_flush, shr_sys_abort
-  use seq_comm_mct, only: logunit, loglevel
-  use seq_comm_mct, only: num_inst_atm, num_inst_lnd, num_inst_rof
-  use seq_comm_mct, only: num_inst_ocn, num_inst_ice, num_inst_glc
-  use seq_comm_mct, only: num_inst_wav
-  use seq_flds_mod, only: seq_flds_scalar_num, seq_flds_scalar_name
-  use seq_flds_mod, only: seq_flds_scalar_index_nx,  seq_flds_scalar_index_ny
-  use seq_flds_mod, only: seq_flds_scalar_index_flood_present
-  use seq_flds_mod, only: seq_flds_scalar_index_rofice_present
-  use seq_flds_mod, only: seq_flds_scalar_index_precip_fact
-  use seq_flds_mod, only: seq_flds_scalar_index_nextsw_cday
-  use seq_flds_mod, only: seq_flds_scalar_index_atm_aero
-  use seq_flds_mod, only: seq_flds_scalar_index_dead_comps
-  use shr_nuopc_methods_mod, only: shr_nuopc_methods_chkErr
+
+  use shr_kind_mod          , only: SHR_KIND_CS, SHR_KIND_CL, SHR_KIND_IN, SHR_KIND_R8, SHR_KIND_I8
+  use shr_sys_mod           , only: shr_sys_flush, shr_sys_abort
+  use shr_comms_mod         , only: logunit, loglevel
+  use shr_comms_mod         , only: num_inst_atm, num_inst_lnd, num_inst_rof
+  use shr_comms_mod         , only: num_inst_ocn, num_inst_ice, num_inst_glc
+  use shr_comms_mod         , only: num_inst_wav
+  use seq_flds_mod          , only: seq_flds_scalar_num, seq_flds_scalar_name
+  use seq_flds_mod          , only: seq_flds_scalar_index_nx,  seq_flds_scalar_index_ny
+  use seq_flds_mod          , only: seq_flds_scalar_index_flood_present
+  use seq_flds_mod          , only: seq_flds_scalar_index_rofice_present
+  use seq_flds_mod          , only: seq_flds_scalar_index_precip_fact
+  use seq_flds_mod          , only: seq_flds_scalar_index_nextsw_cday
+  use seq_flds_mod          , only: seq_flds_scalar_index_atm_aero
+  use seq_flds_mod          , only: seq_flds_scalar_index_dead_comps
+  use shr_nuopc_methods_mod , only: shr_nuopc_methods_chkErr
 
   implicit none
 
@@ -91,14 +92,13 @@ module med_infodata_mod
 CONTAINS
 
   !===============================================================================
-  subroutine med_infodata_init1(infodata, ID)
+  subroutine med_infodata_init1(infodata)
 
     ! !DESCRIPTION:
     ! Initialize pause_resume
 
     ! !INPUT/OUTPUT PARAMETERS:
     type(med_infodata_type), intent(INOUT) :: infodata  ! infodata object
-    integer(SHR_KIND_IN),    intent(IN)    :: ID        ! seq_comm ID
 
     !----- local -----
     character(len=*),    parameter :: subname = '(med_infodata_Init1) '

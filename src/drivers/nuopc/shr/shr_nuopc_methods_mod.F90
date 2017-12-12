@@ -8,8 +8,8 @@ module shr_nuopc_methods_mod
   use NUOPC
   use shr_nuopc_fldList_mod, only : shr_nuopc_fldList_Type
   use shr_string_mod       , only : shr_string_listGetName
+  use shr_comms_mod        , only : llogunit => logunit
   use seq_flds_mod         , only : seq_flds_scalar_name, seq_flds_scalar_num
-  use seq_comm_mct         , only : llogunit => logunit
   use mpi
 
   implicit none

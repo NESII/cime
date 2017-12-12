@@ -19,9 +19,10 @@ module MED
     mediator_label_SetRunClock      => label_SetRunClock, &
     NUOPC_MediatorGet
 
-  use shr_kind_mod          , only: SHR_KIND_CL
   use seq_flds_mod
-  use seq_comm_mct          , only: llogunit => logunit
+
+  use shr_kind_mod          , only: SHR_KIND_CL
+  use shr_comms_mod         , only: llogunit => logunit
   use shr_sys_mod           , only: shr_sys_flush, shr_sys_abort
 
   use shr_nuopc_fldList_mod , only: shr_nuopc_fldList_Zero

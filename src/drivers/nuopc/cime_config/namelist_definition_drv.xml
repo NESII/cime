@@ -801,89 +801,89 @@
     </values>
   </entry>
 
-  <entry id="atm_gnam" modify_via_xml="ATM_GRID">
-    <type>char</type>
-    <category>mapping</category>
-    <group>DRIVER_info_attributes</group>
-    <desc>
-      ATM_GRID values passed into driver.
-    </desc>
-    <values>
-      <value>$ATM_GRID</value>
-    </values>
-  </entry>
+  <!-- <entry id="atm_gnam" modify_via_xml="ATM_GRID"> -->
+  <!--   <type>char</type> -->
+  <!--   <category>mapping</category> -->
+  <!--   <group>DRIVER_info_attributes</group> -->
+  <!--   <desc> -->
+  <!--     ATM_GRID values passed into driver. -->
+  <!--   </desc> -->
+  <!--   <values> -->
+  <!--     <value>$ATM_GRID</value> -->
+  <!--   </values> -->
+  <!-- </entry> -->
 
-  <entry id="lnd_gnam" modify_via_xml="LND_GRID">
-    <type>char</type>
-    <category>mapping</category>
-    <group>DRIVER_info_attributes</group>
-    <desc>
-      LND_GRID values passed into driver.
-    </desc>
-    <values>
-      <value>$LND_GRID</value>
-    </values>
-  </entry>
+  <!-- <entry id="lnd_gnam" modify_via_xml="LND_GRID"> -->
+  <!--   <type>char</type> -->
+  <!--   <category>mapping</category> -->
+  <!--   <group>DRIVER_info_attributes</group> -->
+  <!--   <desc> -->
+  <!--     LND_GRID values passed into driver. -->
+  <!--   </desc> -->
+  <!--   <values> -->
+  <!--     <value>$LND_GRID</value> -->
+  <!--   </values> -->
+  <!-- </entry> -->
 
-  <entry id="ocn_gnam" modify_via_xml="OCN_GRID">
-    <type>char</type>
-    <category>mapping</category>
-    <group>DRIVER_info_attributes</group>
-    <desc>
-      OCN_GRID values passed into driver.
-    </desc>
-    <values>
-      <value>$OCN_GRID</value>
-    </values>
-  </entry>
+  <!-- <entry id="ocn_gnam" modify_via_xml="OCN_GRID"> -->
+  <!--   <type>char</type> -->
+  <!--   <category>mapping</category> -->
+  <!--   <group>DRIVER_info_attributes</group> -->
+  <!--   <desc> -->
+  <!--     OCN_GRID values passed into driver. -->
+  <!--   </desc> -->
+  <!--   <values> -->
+  <!--     <value>$OCN_GRID</value> -->
+  <!--   </values> -->
+  <!-- </entry> -->
 
-  <entry id="ice_gnam" modify_via_xml="ICE_GRID">
-    <type>char</type>
-    <category>mapping</category>
-    <group>DRIVER_info_attributes</group>
-    <desc>
-      ICE_GRID values passed into driver.
-    </desc>
-    <values>
-      <value>$ICE_GRID</value>
-    </values>
-  </entry>
+  <!-- <entry id="ice_gnam" modify_via_xml="ICE_GRID"> -->
+  <!--   <type>char</type> -->
+  <!--   <category>mapping</category> -->
+  <!--   <group>DRIVER_info_attributes</group> -->
+  <!--   <desc> -->
+  <!--     ICE_GRID values passed into driver. -->
+  <!--   </desc> -->
+  <!--   <values> -->
+  <!--     <value>$ICE_GRID</value> -->
+  <!--   </values> -->
+  <!-- </entry> -->
 
-  <entry id="rof_gnam" modify_via_xml="ROF_GRID">
-    <type>char</type>
-    <category>mapping</category>
-    <group>DRIVER_info_attributes</group>
-    <desc>
-      ROF_GRID values passed into driver.
-    </desc>
-    <values>
-      <value>$ROF_GRID</value>
-    </values>
-  </entry>
+  <!-- <entry id="rof_gnam" modify_via_xml="ROF_GRID"> -->
+  <!--   <type>char</type> -->
+  <!--   <category>mapping</category> -->
+  <!--   <group>DRIVER_info_attributes</group> -->
+  <!--   <desc> -->
+  <!--     ROF_GRID values passed into driver. -->
+  <!--   </desc> -->
+  <!--   <values> -->
+  <!--     <value>$ROF_GRID</value> -->
+  <!--   </values> -->
+  <!-- </entry> -->
 
-  <entry id="glc_gnam" modify_via_xml="GLC_GRID">
-    <type>char</type>
-    <category>mapping</category>
-    <group>DRIVER_info_attributes</group>
-    <desc>
-      GLC_GRID values passed into driver.
-    </desc>
-    <values>
-      <value>$GLC_GRID</value>
-    </values>
-  </entry>
+  <!-- <entry id="glc_gnam" modify_via_xml="GLC_GRID"> -->
+  <!--   <type>char</type> -->
+  <!--   <category>mapping</category> -->
+  <!--   <group>DRIVER_info_attributes</group> -->
+  <!--   <desc> -->
+  <!--     GLC_GRID values passed into driver. -->
+  <!--   </desc> -->
+  <!--   <values> -->
+  <!--     <value>$GLC_GRID</value> -->
+  <!--   </values> -->
+  <!-- </entry> -->
 
-  <entry id="wav_gnam" modify_via_xml="WAV_GRID">
-    <type>char</type>
-    <category>mapping</category>
-    <group>DRIVER_info_attributes</group>
-    <desc>
-      WAV_GRID values passed into driver.
-    </desc>
-    <values>
-      <value>$WAV_GRID</value>
-    </values>
-  </entry>
+  <!-- <entry id="wav_gnam" modify_via_xml="WAV_GRID"> -->
+  <!--   <type>char</type> -->
+  <!--   <category>mapping</category> -->
+  <!--   <group>DRIVER_info_attributes</group> -->
+  <!--   <desc> -->
+  <!--     WAV_GRID values passed into driver. -->
+  <!--   </desc> -->
+  <!--   <values> -->
+  <!--     <value>$WAV_GRID</value> -->
+  <!--   </values> -->
+  <!-- </entry> -->
 
   <entry id="vect_map" modify_via_xml="VECT_MAP">
     <type>char</type>
@@ -926,58 +926,58 @@
     </values>
   </entry>
 
-  <entry id="mct_usealltoall">
-    <type>logical</type>
-    <category>mapping</category>
-    <group>DRIVER_info_attributes</group>
-    <desc>
-      mct alltoall mapping flag
-      default: false
-    </desc>
-    <values>
-      <value>.false.</value>
-    </values>
-  </entry>
+  <!-- <entry id="mct_usealltoall"> -->
+  <!--   <type>logical</type> -->
+  <!--   <category>mapping</category> -->
+  <!--   <group>DRIVER_info_attributes</group> -->
+  <!--   <desc> -->
+  <!--     mct alltoall mapping flag -->
+  <!--     default: false -->
+  <!--   </desc> -->
+  <!--   <values> -->
+  <!--     <value>.false.</value> -->
+  <!--   </values> -->
+  <!-- </entry> -->
 
-  <entry id="mct_usevector">
-    <type>logical</type>
-    <category>mapping</category>
-    <group>DRIVER_info_attributes</group>
-    <desc>
-      mct vector flag
-      default: false
-    </desc>
-    <values>
-      <value>.false.</value>
-    </values>
-  </entry>
+  <!-- <entry id="mct_usevector"> -->
+  <!--   <type>logical</type> -->
+  <!--   <category>mapping</category> -->
+  <!--   <group>DRIVER_info_attributes</group> -->
+  <!--   <desc> -->
+  <!--     mct vector flag -->
+  <!--     default: false -->
+  <!--   </desc> -->
+  <!--   <values> -->
+  <!--     <value>.false.</value> -->
+  <!--   </values> -->
+  <!-- </entry> -->
 
-  <entry id="cpl_decomp" modify_via_xml="CPL_DECOMP">
-    <type>integer</type>
-    <category>expdef</category>
-    <group>DRIVER_info_attributes</group>
-    <valid_values>0,1,2,3,4,5,6</valid_values>
-    <desc>
-      cpl decomp option (0=default, 1=comp decomp, 2=rearr comp decomp, 3=new single 1d seg
-      default: 0
-    </desc>
-    <values>
-      <value>$CPL_DECOMP</value>
-    </values>
-  </entry>
+  <!-- <entry id="cpl_decomp" modify_via_xml="CPL_DECOMP"> -->
+  <!--   <type>integer</type> -->
+  <!--   <category>expdef</category> -->
+  <!--   <group>DRIVER_info_attributes</group> -->
+  <!--   <valid_values>0,1,2,3,4,5,6</valid_values> -->
+  <!--   <desc> -->
+  <!--     cpl decomp option (0=default, 1=comp decomp, 2=rearr comp decomp, 3=new single 1d seg -->
+  <!--     default: 0 -->
+  <!--   </desc> -->
+  <!--   <values> -->
+  <!--     <value>$CPL_DECOMP</value> -->
+  <!--   </values> -->
+  <!-- </entry> -->
 
-  <entry id="cpl_seq_option" modify_via_xml="CPL_SEQ_OPTION">
-    <type>char</type>
-    <category>expdef</category>
-    <group>DRIVER_info_attributes</group>
-    <valid_values>CESM1_ORIG,CESM1_MOD,CESM1_ORIG_TIGHT,CESM1_MOD_TIGHT,RASM_OPTION1,RASM_OPTION2</valid_values>
-    <desc>
-      Set the coupler sequencing.
-    </desc>
-    <values>
-      <value>$CPL_SEQ_OPTION</value>
-    </values>
-  </entry>
+  <!-- <entry id="cpl_seq_option" modify_via_xml="CPL_SEQ_OPTION"> -->
+  <!--   <type>char</type> -->
+  <!--   <category>expdef</category> -->
+  <!--   <group>DRIVER_info_attributes</group> -->
+  <!--   <valid_values>CESM1_ORIG,CESM1_MOD,CESM1_ORIG_TIGHT,CESM1_MOD_TIGHT,RASM_OPTION1,RASM_OPTION2</valid_values> -->
+  <!--   <desc> -->
+  <!--     Set the coupler sequencing. -->
+  <!--   </desc> -->
+  <!--   <values> -->
+  <!--     <value>$CPL_SEQ_OPTION</value> -->
+  <!--   </values> -->
+  <!-- </entry> -->
 
   <!-- <entry id="cpl_cdf64"> -->
   <!--   <type>logical</type> -->
@@ -1352,18 +1352,18 @@
     </values>
   </entry>
 
-  <entry id="drv_threading" modify_via_xml="DRV_THREADING">
-    <type>logical</type>
-    <category>performance</category>
-    <group>DRIVER_info_attributes</group>
-    <desc>
-      turn on run time control of threading per pe per component by the driver
-      default: false
-    </desc>
-    <values>
-      <value>$DRV_THREADING</value>
-    </values>
-  </entry>
+  <!-- <entry id="drv_threading" modify_via_xml="DRV_THREADING"> -->
+  <!--   <type>logical</type> -->
+  <!--   <category>performance</category> -->
+  <!--   <group>DRIVER_info_attributes</group> -->
+  <!--   <desc> -->
+  <!--     turn on run time control of threading per pe per component by the driver -->
+  <!--     default: false -->
+  <!--   </desc> -->
+  <!--   <values> -->
+  <!--     <value>$DRV_THREADING</value> -->
+  <!--   </values> -->
+  <!-- </entry> -->
 
   <entry id="run_barriers" modify_via_xml="COMP_RUN_BARRIERS">
     <type>logical</type>
@@ -2677,7 +2677,7 @@
       modified to now be use cases. This use cases are specified in the
       namelist cpl_flds_inparm and are currently triggered by the xml variable ACME_BGC.
       This is a new master switch for turning ACME BGC off and on, just for testing.
-      If ACME_BGC is set to 'TRUE', then flds_bgc will be set to .true.
+a      If ACME_BGC is set to 'TRUE', then flds_bgc will be set to .true.
     </desc>
     <values>
       <value>.false.</value>

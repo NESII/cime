@@ -9,7 +9,7 @@ module dwav_comp_nuopc
   use shr_sys_mod   ! shared system calls
 
   use seq_flds_mod
-  use seq_comm_mct          , only: seq_comm_inst, seq_comm_name, seq_comm_suffix
+  use shr_comms_mod         , only: shr_comms_getinfo
 
   use shr_nuopc_fldList_mod
   use shr_nuopc_methods_mod , only: shr_nuopc_methods_Clock_TimePrint
@@ -246,9 +246,7 @@ module dwav_comp_nuopc
     ! determine instance information
     !----------------------------------------------------------------------------
 
-    inst_name   = seq_comm_name(compid)
-    inst_index  = seq_comm_inst(compid)
-    inst_suffix = seq_comm_suffix(compid)
+    call shr_comms_getinfo(compid, name=inst_name, inst=inst_index, suffix=inst_suffix)
 
     !----------------------------------------------------------------------------
     ! set logunit

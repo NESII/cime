@@ -123,7 +123,7 @@ module seq_flds_mod
 
    use shr_kind_mod      , only : CX => shr_kind_CX, CXX => shr_kind_CXX
    use shr_sys_mod       , only : shr_sys_abort
-   use seq_comm_mct      , only : seq_comm_iamroot, seq_comm_setptrs, llogunit => logunit
+   use shr_comms_mod     , only : shr_comms_getinfo, llogunit => logunit
    use seq_drydep_mod    , only : seq_drydep_init, seq_drydep_readnl, lnd_drydep
    use shr_megan_mod     , only : shr_megan_readnl, shr_megan_mechcomps_n
    use shr_fire_emis_mod , only : shr_fire_emis_readnl, shr_fire_emis_mechcomps_n, shr_fire_emis_ztop_token
@@ -292,7 +292,7 @@ module seq_flds_mod
 
      ! !INPUT/OUTPUT PARAMETERS:
      character(len=*) , intent(in) :: nmlfile    ! Name-list filename
-     integer          , intent(in) :: ID         ! seq_comm ID
+     integer          , intent(in) :: ID         ! shr_comms ID
      character(len=*) , intent(in) :: cime_model ! acme or cesm
 
      ! !LOCAL VARIABLES:
@@ -354,6 +354,8 @@ module seq_flds_mod
 
      character(CXX) :: stringtmp  = ''
 
+     logical :: iamroot
+
      !------ namelist -----
      character(len=CSS)  :: fldname, fldflow
      logical :: is_state, is_flux
@@ -380,8 +382,6 @@ module seq_flds_mod
      character(len=*),parameter :: subname = '(seq_flds_set) '
      !-------------------------------------------------------------------------------
 
-     call seq_comm_setptrs(ID,mpicom=mpicom)
-
      !---------------------------------------------------------------------------
      ! Read in namelist for use cases
      !---------------------------------------------------------------------------
@@ -389,7 +389,8 @@ module seq_flds_mod
      ! TODO: add entries for lookup entry table for custom fields
      !---------------------------------------------------------------------------
 
-     if (seq_comm_iamroot(ID)) then
+     call shr_comms_getinfo(ID, mpicom=mpicom, iamroot=iamroot)
+     if (iamroot) then
         flds_co2a = .false.
         flds_co2b = .false.
         flds_co2c = .false.
@@ -434,7 +435,7 @@ module seq_flds_mod
      ! TODO: add entries for lookup entry table for custom fields
      !---------------------------------------------------------------------------
 
-     if (seq_comm_iamroot(ID)) then
+     if (iamroot) then
         cplflds_custom(:) = ' '
 
         unitn = shr_file_getUnit()
@@ -2591,7 +2592,7 @@ module seq_flds_mod
      seq_flds_r2o_liq_fluxes = trim(r2o_liq_fluxes)
      seq_flds_r2o_ice_fluxes = trim(r2o_ice_fluxes)
 
-     if (seq_comm_iamroot(ID)) then
+     if (iamroot) then
         write(llogunit,"(A)") subname//': seq_flds_a2x_states= ',trim(seq_flds_a2x_states)
         write(llogunit,"(A)") subname//': seq_flds_a2x_fluxes= ',trim(seq_flds_a2x_fluxes)
         write(llogunit,"(A)") subname//': seq_flds_x2a_states= ',trim(seq_flds_x2a_states)
@@ -2651,22 +2652,11 @@ module seq_flds_mod
    end subroutine seq_flds_set
 
    !===============================================================================
-   !BOP ===========================================================================
-   !
-   ! !IROUTINE: seq_flds_add
-   !
-   ! !DESCRIPTION:
-   !  Returns new concatentated field list
-   !  in the output character string {\tt outfld}.
-   !
-   ! !REVISION HISTORY:
-   !  2011-Nov-27  - M. Vertenstein - first version
-   !
-   ! !INTERFACE: ------------------------------------------------------------------
-
    subroutine seq_flds_add(outfld, str, longname, stdname , units)
 
-     ! !USES:
+     ! !DESCRIPTION:
+     !  Returns new concatentated field list
+     !  in the output character string {\tt outfld}.
 
      ! !INPUT/OUTPUT PARAMETERS:
 
@@ -2675,8 +2665,6 @@ module seq_flds_mod
      character(len=*),intent(in),optional :: longname
      character(len=*),intent(in),optional :: stdname
      character(len=*),intent(in),optional :: units
-
-     !EOP
 
      character(len=*),parameter :: subname = '(seq_flds_add) '
      !-------------------------------------------------------------------------------
@@ -2701,22 +2689,11 @@ module seq_flds_mod
    end subroutine seq_flds_add
 
    !===============================================================================
-   !BOP ===========================================================================
-   !
-   ! !IROUTINE: catFields
-   !
-   ! !DESCRIPTION:
-   !  Returns {\tt nfld} concatentated field lists
-   !  in the output character string {\tt outfield}.
-   !
-   ! !REVISION HISTORY:
-   !  2003-Jan-24  - T. Craig - first version
-   !
-   ! !INTERFACE: ------------------------------------------------------------------
-
    subroutine catFields(outfield, str1, str2)
 
-     ! !USES:
+     ! !DESCRIPTION:
+     !  Returns {\tt nfld} concatentated field lists
+     !  in the output character string {\tt outfield}.
 
      ! !INPUT/OUTPUT PARAMETERS:
 
@@ -2724,11 +2701,7 @@ module seq_flds_mod
      character(len=*),intent(in)    :: str1       ! string1
      character(len=*),intent(in )   :: str2       ! string2
 
-     !EOP
-
      character(len=*),parameter :: subname = '(seq_flds_catFields) '
-     !-------------------------------------------------------------------------------
-     !
      !-------------------------------------------------------------------------------
 
      outfield = ''
@@ -2755,57 +2728,13 @@ module seq_flds_mod
    end subroutine catFields
 
    !===============================================================================
-   !BOP ===========================================================================
-   !
-   ! !IROUTINE: seq_flds_getField
-   !
-   ! !DESCRIPTION:
-   !  Returns {\tt nfld} element of the colon-delimited string {\tt cstring}
-   !  in the output character string {\tt outfield}.
-   !
-   ! !REVISION HISTORY:
-   !  2003-Jan-24  - T. Craig - first version
-   !
-   ! !INTERFACE: ------------------------------------------------------------------
-
-   subroutine seq_flds_getField(outfield, nfld, cstring)
-
-     ! !USES:
-     use mct_mod
-
-     ! !INPUT/OUTPUT PARAMETERS:
-
-     character(len=*),intent(out) :: outfield   ! output field name
-     integer         ,intent(in ) :: nfld       ! field number
-     character(len=*),intent(in ) :: cstring    ! colon delimited field string
-
-     !EOP
-
-     type(mct_list)   :: mctIstr  ! mct list from input cstring
-     type(mct_string) :: mctOStr  ! mct string for output outfield
-     character(len=*),parameter :: subname = '(seq_flds_getField) '
-
-     !-------------------------------------------------------------------------------
-     !
-     !-------------------------------------------------------------------------------
-
-     outfield = ''
-
-     call mct_list_init(mctIstr,cstring)
-     call mct_list_get(mctOStr,nfld,mctIstr)
-     outfield = mct_string_toChar(mctOStr)
-     call mct_list_clean(mctIstr)
-     call mct_string_clean(mctOStr)
-
-   end subroutine seq_flds_getField
-
-   !===============================================================================
-! If the attname passed in contains colons it is assumed to be a list of fields
-! all of which have the same names and units
    subroutine metadata_set(attname , longname, stdname , units   )
 
      ! !USES:
      implicit none
+
+     ! If the attname passed in contains colons it is assumed to be a list of fields
+     ! all of which have the same names and units
 
      ! !INPUT/OUTPUT PARAMETERS:
      character(len=*), intent(in) :: attname
@@ -2813,7 +2742,6 @@ module seq_flds_mod
      character(len=*), intent(in) :: stdname
      character(len=*), intent(in) :: units
 
-     !EOP
      character(len=*),parameter :: subname = '(seq_flds_metadata_set) '
      integer :: i, j
 

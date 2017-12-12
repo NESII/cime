@@ -32,13 +32,13 @@ CONTAINS
 
     use shr_file_mod , only : shr_file_getUnit, shr_file_freeUnit
     use shr_log_mod  , only : s_logunit => shr_log_Unit
-    use seq_comm_mct , only : seq_comm_iamroot, seq_comm_setptrs
+    use shr_comms_mod, only : shr_comms_getinfo
     use shr_mpi_mod  , only : shr_mpi_bcast
     use shr_nl_mod   , only : shr_nl_find_group_name
     implicit none
 
     character(len=*), intent(in)  :: NLFilename ! Namelist filename
-    integer         , intent(in)  :: ID         ! seq_comm ID
+    integer         , intent(in)  :: ID         ! shr_comms ID
     character(len=*), intent(out) :: ndep_fields
     logical         , intent(out) :: add_ndep_fields
 
@@ -49,6 +49,7 @@ CONTAINS
     logical :: exists           ! if file exists or not
     character(len=8) :: token   ! dry dep field name to add
     integer :: mpicom           ! MPI communicator
+    logical :: iamroot
 
     integer, parameter :: maxspc = 100             ! Maximum number of species
     character(len=32)  :: ndep_list(maxspc) = ''   ! List of ndep species
@@ -69,8 +70,8 @@ CONTAINS
     if ( len_trim(NLFilename) == 0 ) then
        call shr_sys_abort( subName//'ERROR: nlfilename not set' )
     end if
-    call seq_comm_setptrs(ID,mpicom=mpicom)
-    if (seq_comm_iamroot(ID)) then
+    call shr_comms_getinfo(ID, mpicom=mpicom, iamroot=iamroot)
+    if (iamroot) then
        inquire( file=trim(NLFileName), exist=exists)
        if ( exists ) then
           unitn = shr_file_getUnit()
@@ -100,7 +101,7 @@ CONTAINS
     if (len_trim(ndep_list(1)) == 0) then
        add_ndep_fields = .false.
     else
-       ! Loop over species to fill list of fields to communicate for ndep 
+       ! Loop over species to fill list of fields to communicate for ndep
        add_ndep_fields = .true.
        do i=1,maxspc
           if ( len_trim(ndep_list(i))==0 ) exit

@@ -91,17 +91,18 @@ contains
 
     use shr_nl_mod,     only : shr_nl_find_group_name
     use shr_file_mod,   only : shr_file_getUnit, shr_file_freeUnit
-    use seq_comm_mct,   only : seq_comm_iamroot, seq_comm_setptrs, logunit
+    use shr_comms_mod,  only : shr_comms_getinfo, logunit
     use shr_mpi_mod,    only : shr_mpi_bcast
 
     character(len=*), intent(in)  :: NLFileName  ! name of namelist file
-    integer         , intent(in)  :: ID          ! seq_comm ID
+    integer         , intent(in)  :: ID          ! shr_comms ID
     character(len=*), intent(out) :: emis_fields ! emis flux fields
 
     integer :: unitn            ! namelist unit number
     integer :: ierr             ! error code
     logical :: exists           ! if file exists or not
     integer :: mpicom           ! MPI communicator
+    logical :: iamroot
 
     integer, parameter :: maxspc = 100
 
@@ -114,9 +115,8 @@ contains
 
     namelist /fire_emis_nl/ fire_emis_specifier, fire_emis_factors_file, fire_emis_elevated
 
-    call seq_comm_setptrs(ID,mpicom=mpicom)
-    if (seq_comm_iamroot(ID)) then
-
+    call shr_comms_getinfo(ID, mpicom=mpicom, iamroot=iamroot)
+    if (iamroot) then
        inquire( file=trim(NLFileName), exist=exists)
 
        if ( exists ) then

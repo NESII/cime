@@ -514,15 +514,15 @@ CONTAINS
     !  2009-Feb-20 - E. Kluzek - Separate out as subroutine from previous input_init
     !========================================================================
 
-    use shr_file_mod,only : shr_file_getUnit, shr_file_freeUnit
-    use shr_log_mod, only : s_logunit => shr_log_Unit
-    use seq_comm_mct,only : seq_comm_iamroot, seq_comm_setptrs
-    use shr_mpi_mod, only : shr_mpi_bcast
-    use shr_nl_mod, only : shr_nl_find_group_name
+    use shr_file_mod , only : shr_file_getUnit, shr_file_freeUnit
+    use shr_log_mod  , only : s_logunit => shr_log_Unit
+    use shr_comms_mod, only : shr_comms_getinfo
+    use shr_mpi_mod  , only : shr_mpi_bcast
+    use shr_nl_mod   , only : shr_nl_find_group_name
     implicit none
 
     character(len=*), intent(in)  :: NLFilename ! Namelist filename
-    integer         , intent(in)  :: ID         ! seq_comm ID
+    integer         , intent(in)  :: ID         ! shr_comms ID
     character(len=*), intent(out) :: seq_drydep_fields
 
     !----- local -----
@@ -532,6 +532,7 @@ CONTAINS
     logical :: exists           ! if file exists or not
     character(len=8) :: token   ! dry dep field name to add
     integer :: mpicom           ! MPI communicator
+    logical :: iamroot
 
     !----- formats -----
     character(*),parameter :: subName = '(seq_drydep_read) '
@@ -549,8 +550,8 @@ CONTAINS
     if ( len_trim(NLFilename) == 0  )then
        call shr_sys_abort( subName//'ERROR: nlfilename not set' )
     end if
-    call seq_comm_setptrs(ID,mpicom=mpicom)
-    if (seq_comm_iamroot(ID)) then
+    call shr_comms_getinfo(ID, mpicom=mpicom, iamroot=iamroot)
+    if (iamroot) then
        inquire( file=trim(NLFileName), exist=exists)
        if ( exists ) then
           unitn = shr_file_getUnit()

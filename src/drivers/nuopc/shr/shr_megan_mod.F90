@@ -107,17 +107,18 @@ contains
 
     use shr_nl_mod,     only : shr_nl_find_group_name
     use shr_file_mod,   only : shr_file_getUnit, shr_file_freeUnit
-    use seq_comm_mct,   only : seq_comm_iamroot, seq_comm_setptrs
+    use shr_comms_mod,  only : shr_comms_getinfo
     use shr_mpi_mod,    only : shr_mpi_bcast
 
     character(len=*), intent(in)  :: NLFileName
-    integer         , intent(in)  :: ID          ! seq_comm ID
+    integer         , intent(in)  :: ID          ! shr_comms ID
     character(len=*), intent(out) :: megan_fields
 
     integer :: unitn            ! namelist unit number
     integer :: ierr             ! error code
     logical :: exists           ! if file exists or not
     integer :: mpicom           ! MPI communicator
+    logical :: iamroot
 
     integer, parameter :: maxspc = 100
 
@@ -129,12 +130,11 @@ contains
 
     namelist /megan_emis_nl/ megan_specifier, megan_factors_file, megan_mapped_emisfctrs
 
-    call seq_comm_setptrs(ID,mpicom=mpicom)
-    if (seq_comm_iamroot(ID)) then
+    call shr_comms_getinfo(ID, mpicom=mpicom, iamroot=iamroot)
+    if (iamroot) then
        inquire( file=trim(NLFileName), exist=exists)
 
        if ( exists ) then
-
           unitn = shr_file_getUnit()
           open( unitn, file=trim(NLFilename), status='old' )
           if ( loglev > 0 ) write(logunit,F00) &
@@ -142,18 +142,14 @@ contains
 
           call shr_nl_find_group_name(unitn, 'megan_emis_nl', status=ierr)
           ! If ierr /= 0, no namelist present.
-
           if (ierr == 0) then
              read(unitn, megan_emis_nl, iostat=ierr)
-
              if (ierr > 0) then
                 call shr_sys_abort( 'problem on read of megan_emis_nl namelist in shr_megan_readnl' )
              endif
           endif
-
           close( unitn )
           call shr_file_freeUnit( unitn )
-
        end if
     end if
     call shr_mpi_bcast( megan_specifier, mpicom )
