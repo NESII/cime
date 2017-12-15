@@ -807,18 +807,14 @@ contains
 
        call seq_infodata_GetData(infodata,nextsw_cday=nextsw_cday,orb_eccen=eccen, &
           orb_mvelpp=mvelpp, orb_lambm0=lambm0, orb_obliqr=obliqr)
-       write(6,*)'DEBUG_OCNALB: nextsw_cday= ',nextsw_cday
        if (nextsw_cday >= -0.5_r8) then
           calday = nextsw_cday
           call shr_orb_decl(calday, eccen, mvelpp,lambm0, obliqr, delta, eccf)
           ! Compute albedos
           do n=1,nloc_o
              rlat = const_deg2rad * lats(n)
-             write(6,*)'DEBUG_OCNALB: n,rlat= ',n,lats(n)
              rlon = const_deg2rad * lons(n)
-             write(6,*)'DEBUG_OCNALB: n,rlon= ',n,lons(n)
              cosz = shr_orb_cosz( calday, rlat, rlon, delta )
-             write(6,*)'DEBUG_OCNALB: n,cosz= ',n,cosz
              if (cosz  >  0.0_r8) then !--- sun hit --
                 anidr = (.026_r8/(cosz**1.7_r8 + 0.065_r8)) +   &
                         (.150_r8*(cosz         - 0.100_r8 ) *   &

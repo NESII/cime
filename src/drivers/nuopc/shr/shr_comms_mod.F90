@@ -55,7 +55,7 @@ module shr_comms_mod
   ! Note - NUM_COMP_INST_XXX are cpp variables set in buildlib.csm_share
 
   integer, parameter :: ncomptypes = 8  ! total number of component types
-  integer, parameter :: ncouplers  = 1  ! number of couplers
+  integer, parameter :: nmediators = 1  ! number of mediators
 
   integer, parameter, public :: num_inst_atm = NUM_COMP_INST_ATM
   integer, parameter, public :: num_inst_lnd = NUM_COMP_INST_LND
@@ -92,8 +92,8 @@ module shr_comms_mod
                        num_inst_glc + num_inst_rof + &
                        num_inst_wav + num_inst_esp
 
- !integer, parameter :: ncomps = (1 + ncouplers + 2*ncomptypes + num_inst_phys + num_cpl_phys)
-  integer, parameter :: ncomps = 1 + ncouplers + num_inst_phys
+ !integer, parameter :: ncomps = (1 + nmediators + 2*ncomptypes + num_inst_phys + num_cpl_phys)
+  integer, parameter :: ncomps = 1 + nmediators + num_inst_phys
 
   integer, public :: GLOID
   integer, public :: MEDID
@@ -182,6 +182,7 @@ contains
     integer, pointer        :: comps(:)    ! array with component ids
     integer, pointer        :: comms(:)    ! array with mpicoms
     logical                 :: output_perf = .false.  ! require timing data output for this pe
+    integer                 :: ntasks, ntask, cnt
     character(len=(shr_comms_namelen+1)*(num_inst_phys+1)) :: complist
 
     integer :: &
@@ -381,6 +382,17 @@ contains
        pelist(3,1) = cpl_pestride
     end if
     call mpi_bcast(pelist, size(pelist), MPI_INTEGER, 0, DRIVER_COMM, ierr)
+    ntasks = ((pelist(2,1) - pelist(1,1)) / pelist(3,1)) + 1
+    allocate(shr_comms(MEDID)%petlist(ntasks))
+    cnt = 0
+    do ntask = pelist(1,1),pelist(2,1),pelist(3,1)
+       cnt = cnt + 1
+       if (cnt > ntasks) then
+          write(logunit,*) subname,' ERROR in petlist init ',ntasks,pelist(1:3,1),ntask,cnt
+          call shr_sys_abort(subname//' ERROR in petlist init')
+       endif
+       shr_comms(MEDID)%petlist(cnt) = ntask
+    enddo
     call set_shr_comms(MEDID, pelist=pelist, nthreads=cpl_nthreads, iname='MED')
 
     call comp_init(driver_comm, atm_rootpe, atm_nthreads, atm_layout, atm_ntasks, atm_pestride, num_inst_atm, &
@@ -678,6 +690,9 @@ contains
 
   !---------------------------------------------------------
   subroutine set_shr_comms(ID, pelist, nthreads, iname, inst, tinst)
+
+    ! Set the following elements of shr_comms(ID)
+    !   - %ID, %inst, %name, %npes, %iam, %nthreads, %iamroot
 
     ! Arguments
     integer          ,intent(IN)          :: ID

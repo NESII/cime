@@ -1073,7 +1073,9 @@ module ESM
           return  ! bail out
         endif
 
+        write(6,*)'DEBUG: MEDID= ',MEDID
         call shr_comms_getinfo(MEDID, petList=petList)
+        write(6,*)'DEBUG: petlist = ',petList
         if (trim(model) == "cesm") then
            call NUOPC_DriverAddComp(driver, "MED", med_SS, petList=petList, comp=child, rc=rc)
            if (shr_nuopc_methods_ChkErr(rc,__LINE__,u_FILE_u)) return

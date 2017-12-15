@@ -8,6 +8,7 @@ module ocn_comp_mct
   use seq_cdata_mod   , only: seq_cdata, seq_cdata_setptrs
   use seq_infodata_mod, only: seq_infodata_type, seq_infodata_putdata, seq_infodata_getdata
   use seq_comm_mct    , only: seq_comm_inst, seq_comm_name, seq_comm_suffix
+  use seq_timemgr_mod , only: seq_timemgr_RestartAlarmIsOn
   use shr_kind_mod    , only: IN=>SHR_KIND_IN, R8=>SHR_KIND_R8, CS=>SHR_KIND_CS, CL=>SHR_KIND_CL
   use shr_strdata_mod , only: shr_strdata_type
   use shr_file_mod    , only: shr_file_getunit, shr_file_getlogunit, shr_file_getloglevel
@@ -41,6 +42,7 @@ module ocn_comp_mct
   character(len=16)      :: inst_suffix         ! char string associated with instance (ie. "_0001" or "")
   integer(IN)            :: logunit             ! logging unit number
   integer(IN)            :: compid              ! mct comp id
+  logical                :: read_restart        ! start from restart
 
   character(*), parameter :: F00   = "('(docn_comp_init) ',8a)"
   integer(IN) , parameter :: master_task=0 ! task number of master task
@@ -72,7 +74,6 @@ CONTAINS
     logical           :: ocnrof_prognostic         ! flag
     integer(IN)       :: shrlogunit                ! original log unit
     integer(IN)       :: shrloglev                 ! original log level
-    logical           :: read_restart              ! start from restart
     integer(IN)       :: ierr                      ! error code
     logical           :: scmMode = .false.         ! single column mode
     real(R8)          :: scmLat  = shr_const_SPVAL ! single column lat
@@ -192,10 +193,11 @@ CONTAINS
     type(seq_infodata_type), pointer :: infodata
     type(mct_gsMap)        , pointer :: gsMap
     type(mct_gGrid)        , pointer :: ggrid
-    integer(IN)                      :: shrlogunit   ! original log unit
-    integer(IN)                      :: shrloglev    ! original log level
-    logical                          :: read_restart ! start from restart
-    character(CL)                    :: case_name    ! case name
+    integer(IN)                      :: shrlogunit    ! original log unit
+    integer(IN)                      :: shrloglev     ! original log level
+    logical                          :: read_restart  ! true => start from restart
+    logical                          :: write_restart ! true => write restart
+    character(CL)                    :: case_name     ! case name
     character(*), parameter :: subName = "(ocn_run_mct) "
     !-------------------------------------------------------------------------------
 
@@ -211,9 +213,11 @@ CONTAINS
 
     call seq_infodata_GetData(infodata, case_name=case_name)
 
+    write_restart = seq_timemgr_RestartAlarmIsOn(EClock)
+
     call docn_comp_run(EClock, x2o, o2x, &
        SDOCN, gsmap, ggrid, mpicom, compid, my_task, master_task, &
-       inst_suffix, logunit, read_restart, case_name)
+       inst_suffix, logunit, read_restart, write_restart, case_name=case_name)
 
     call shr_file_setLogUnit (shrlogunit)
     call shr_file_setLogLevel(shrloglev)
